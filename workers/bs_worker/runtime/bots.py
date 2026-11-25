@@ -93,11 +93,13 @@ class BotRegistry:
 class BotRuntime:
     def __init__(
         self, registry: BotRegistry, store: BotStore, gateway: Gateway, clock=monotonic,
+        *, model: Callable | None = None,
     ):
         self.registry = registry
         self.store = store
         self.gateway = gateway
         self.clock = clock
+        self.model = model
 
     def start(
         self, run_id: str, bot_id: str, version: int, envelope: dict, inputs: dict,
@@ -240,14 +242,20 @@ class BotRuntime:
             step = {"tool": tool, "fingerprint": material, "key": key}
             run.steps[step_id] = step
             self._event(run, emit, "step_started", stepId=step_id, tool=tool)
-            timeout = dispatch_timeout_ms.set(max(1, int(run.remaining_seconds * 1000)))
+            timeout_ms = max(1, int(run.remaining_seconds * 1000))
+            timeout = dispatch_timeout_ms.set(timeout_ms)
             try:
-                response = self.gateway(tool, envelope, call_input["input"])
+                if tool == "llm.complete" and self.model is not None:
+                    response = self.model(tenant, call_input["input"], timeout_ms)
+                    remaining()
+                else:
+                    response = self.gateway(tool, envelope, call_input["input"])
                 # Results are typed data. No result can select a runtime tool or identity.
                 result = result_types[tool].validate_python(response).model_dump(mode="json")
-            except RunStopped:
-                step["result"] = failed("Dispatch cancelled.")
-                self._event(run, emit, "step_settled", stepId=step_id, state="cancelled")
+            except (RunStopped, BudgetExceeded) as exc:
+                state = "cancelled" if isinstance(exc, RunStopped) else "failed"
+                step["result"] = failed("Dispatch cancelled." if state == "cancelled" else "Bot time budget exhausted.")
+                self._event(run, emit, "step_settled", stepId=step_id, state=state)
                 raise
             except Exception as exc:
                 raise OutcomeUnknown(key) from exc

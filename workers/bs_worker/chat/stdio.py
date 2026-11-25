@@ -8,7 +8,7 @@ from ..runtime.store import MemoryBotStore
 from ..workflows.definition import Definition, StartInput
 from ..workflows.runner import LocalWorkflowRunner, WorkflowConflict, WorkflowQuota, run_win_back
 from .gateway import gateway_client
-from .graph import CHAT
+from .graph import CHAT, NATIVE_CHAT
 
 
 def _write(value: dict) -> None:
@@ -88,9 +88,9 @@ def dispatch(command, gateway, bots, workflows):
     raise ValueError("Unknown command")
 
 
-def main() -> None:
+def main(model=None) -> None:
     gateway = gateway_client(_tool_call)
-    bots = BotRuntime(BotRegistry(CHAT), MemoryBotStore(), gateway)
+    bots = BotRuntime(BotRegistry(NATIVE_CHAT if model else CHAT), MemoryBotStore(), gateway, model=model)
     workflows = LocalWorkflowRunner(gateway)
     for line in sys.stdin:
         try:
