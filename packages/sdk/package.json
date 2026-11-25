@@ -1,0 +1,15 @@
+{
+  "name": "@bs/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "bs": "./bin/bs.ts"
+  },
+  "dependencies": {
+    "@bs/contracts": "workspace:*"
+  }
+}
