@@ -1,6 +1,6 @@
 import { createHash, randomBytes, randomUUID, timingSafeEqual } from 'node:crypto';
 import { PlatformAudit, PlatformError, type MutationContext } from './audit.ts';
-import { PlatformQueue, type TenantRepository } from './repository.ts';
+import type { TenantRepository } from './repository.ts';
 
 export interface ConnectionInput {
   kind: 'api_client' | 'mcp_client';
@@ -27,7 +27,6 @@ export class ConnectionStore {
   private readonly repository: TenantRepository<StoredConnection>;
   private readonly audit: PlatformAudit;
   private readonly now: () => string;
-  private readonly queue = new PlatformQueue();
 
   constructor(
     repository: TenantRepository<StoredConnection>,
@@ -45,7 +44,7 @@ export class ConnectionStore {
 
   create(context: MutationContext, input: ConnectionInput) {
     const { kind, name, scopes } = structuredClone(input);
-    return this.queue.run(async () => {
+    return this.audit.transaction(context.tenantId, async () => {
       const secret = 'fixture_' + randomBytes(32).toString('base64url');
       const connection: Connection = {
         id: 'connection-' + randomUUID(),
@@ -65,7 +64,7 @@ export class ConnectionStore {
   }
 
   delete(context: MutationContext, id: string) {
-    return this.queue.run(async () => {
+    return this.audit.transaction(context.tenantId, async () => {
       if (!(await this.repository.get(context.tenantId, id))) throw new PlatformError('not_found');
       await this.audit.record(context, 'platform.connection.delete');
       await this.repository.delete(context.tenantId, id);
@@ -79,7 +78,7 @@ export class ConnectionStore {
     kind: ConnectionInput['kind'],
     scope: string,
   ) {
-    return this.queue.run(async () => {
+    return this.audit.transaction(tenantId, async () => {
       const stored = await this.repository.get(tenantId, id);
       if (!stored || !timingSafeEqual(Buffer.from(stored.secretHash, 'hex'), hashSecret(secret)))
         return;

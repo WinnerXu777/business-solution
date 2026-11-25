@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import {
   toolModules,
   type Approval,
@@ -10,6 +9,8 @@ import {
 } from '@bs/contracts';
 import type { GovernedGateway } from '../governance/index.ts';
 import { PlatformAudit, PlatformError, type MutationContext } from './audit.ts';
+import { rateableGatewayUsage } from './billing-gateway.ts';
+import type { BillingLedger } from './billing.ts';
 import type { EntitlementStore } from './entitlements.ts';
 import type { TenantDirectory } from './identity.ts';
 import { PlatformQueue } from './repository.ts';
@@ -37,6 +38,7 @@ export class PlatformGateway {
   private readonly entitlements: EntitlementStore;
   private readonly auditSink: PlatformAudit;
   private readonly now: () => string;
+  private readonly billing?: BillingLedger;
   private readonly queue = new PlatformQueue();
   private readonly seen = new Set<string>();
   private readonly grants = new Map<string, PlatformApproval>();
@@ -47,12 +49,14 @@ export class PlatformGateway {
     entitlements: EntitlementStore,
     audit: PlatformAudit,
     now: () => string,
+    billing?: BillingLedger,
   ) {
     this.gateway = gateway;
     this.directory = directory;
     this.entitlements = entitlements;
     this.auditSink = audit;
     this.now = now;
+    this.billing = billing;
   }
 
   audit() {
@@ -135,6 +139,23 @@ export class PlatformGateway {
     }
     const uncertainConsumption =
       result.state === 'unknown' && this.audit().at(-1)?.actionId === result.actionId;
+    if (this.billing && allowed && result.state === 'ok') {
+      const audit = this.audit().findLast(
+        (entry) =>
+          entry.tenantId === envelope.tenantId &&
+          entry.actor.id === envelope.actor.id &&
+          entry.traceId === envelope.traceId &&
+          entry.tool === tool &&
+          entry.state === 'ok',
+      );
+      const counter =
+        audit &&
+        this.usage().find(
+          (item) => item.tenantId === envelope.tenantId && item.outcomeId === audit.actionId,
+        );
+      const event = counter && rateableGatewayUsage(request, result, counter);
+      if (event) await this.billing.recordFixtureUsage(envelope, event);
+    }
     if (grant && tool === grant.tool && (result.state === 'ok' || uncertainConsumption)) {
       grant.state = 'consumed';
     }
@@ -154,7 +175,7 @@ export class PlatformGateway {
       const envelope: CallEnvelope = {
         ...context,
         version: 'v1',
-        idempotencyKey: 'sign-' + randomUUID(),
+        idempotencyKey: 'sign-' + id,
       };
       if (grant.tool === 'purchase.order.approve') {
         const result = await this.execute({

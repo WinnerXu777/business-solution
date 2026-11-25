@@ -94,13 +94,15 @@ export class EntitlementStore {
     enabled: boolean,
     usage: UsageCounterEvent[],
   ) {
-    const current = (await this.listing(context.tenantId, usage)).find(
-      (row) => row.moduleId === module,
-    );
-    if (!current) throw new PlatformError('not_found');
-    if (!current.windowStart) throw new PlatformError('module_disabled');
-    await this.audit.record(context, 'platform.module.update');
-    await this.repository.put(context.tenantId, current.moduleId, enabled);
-    return { ...current, enabled };
+    return this.audit.transaction(context.tenantId, async () => {
+      const current = (await this.listing(context.tenantId, usage)).find(
+        (row) => row.moduleId === module,
+      );
+      if (!current) throw new PlatformError('not_found');
+      if (!current.windowStart) throw new PlatformError('module_disabled');
+      await this.audit.record(context, 'platform.module.update');
+      await this.repository.put(context.tenantId, current.moduleId, enabled);
+      return { ...current, enabled };
+    });
   }
 }

@@ -5,6 +5,11 @@ export interface TenantRepository<Row> {
   delete(tenantId: string, id: string): Promise<void>;
 }
 
+export interface PlatformPersistence {
+  repository<Row>(collection: string): TenantRepository<Row>;
+  transaction<Result>(tenantId: string, run: () => Promise<Result>): Promise<Result>;
+}
+
 export class MemoryTenantRepository<Row> implements TenantRepository<Row> {
   private readonly tenants = new Map<string, Map<string, Row>>();
 
