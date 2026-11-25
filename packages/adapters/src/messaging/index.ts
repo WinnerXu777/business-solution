@@ -1,4 +1,4 @@
-import type { MessageChannel, MessagePreview } from '@bs/contracts';
+﻿import type { MessageChannel, MessagePreview } from '@bs/contracts';
 import type { MessageAdapter } from '../index.ts';
 import { sendToMailpit, type MailpitOptions } from './mailpit.ts';
 
@@ -32,3 +32,10 @@ export function createMessagingAdapters(
     sms: simulated('sms'),
   };
 }
+
+export {
+  createSesTestAdapter,
+  createTwilioTestAdapter,
+  type TestMessageAdapter,
+  type MessageStatus,
+} from './sandbox-providers.ts';

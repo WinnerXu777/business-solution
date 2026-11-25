@@ -90,3 +90,9 @@ export function createRouteAudit() {
     entries: () => structuredClone(entries),
   };
 }
+
+export * from './contracts.ts';
+export { type HttpClient } from './http.ts';
+export { createNativeModelAdapter, createOpenAIAdapter } from './openai.ts';
+export { createAnthropicAdapter } from './anthropic.ts';
+export { createFixtureModelAdapter } from './fixture.ts';
