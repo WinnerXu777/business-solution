@@ -12,6 +12,8 @@ import type {
 } from '@bs/contracts';
 import type { PostgresExecutor } from '../../../business/src/persistence/index.ts';
 
+import type { BillingEntry, Reservation } from './billing.ts';
+
 export interface StoredApproval {
   grant: Approval;
   target: string;
@@ -45,9 +47,15 @@ export interface OutboxJob {
   claim?: string;
   reviewReason?: 'attempts_exhausted' | 'reconciliation_required' | 'dispatch_failed';
   unresolved?: boolean;
+  billingReservation?: Reservation;
 }
 
-export type AuditLink = AuditEntry & { previousHash: string | null; hash: string };
+export type AuditLink = AuditEntry & {
+  previousHash: string | null;
+  hash: string;
+  providerId?: string;
+  bindingVersion?: number;
+};
 
 interface Tables {
   approval: StoredApproval;
@@ -56,9 +64,18 @@ interface Tables {
   intent: StoredIntent;
   outbox: OutboxJob;
   usage: UsageCounterEvent;
+  billing_event: BillingEntry;
 }
 
-const tables = ['approval', 'artifact', 'outcome', 'intent', 'outbox', 'usage'] as const;
+const tables = [
+  'approval',
+  'artifact',
+  'outcome',
+  'intent',
+  'outbox',
+  'usage',
+  'billing_event',
+] as const;
 
 export interface TenantState {
   rows: { [Name in keyof Tables]: Map<string, Tables[Name]> };
@@ -74,6 +91,7 @@ function emptyState(): TenantState {
       intent: new Map(),
       outbox: new Map(),
       usage: new Map(),
+      billing_event: new Map(),
     },
     audit: [],
   };
@@ -110,6 +128,7 @@ interface TransactionClient extends PostgresExecutor {
 export class PostgresGovernanceStore implements GovernanceStore {
   private readonly pool: { connect(): Promise<TransactionClient> };
   private readonly activeClient = new AsyncLocalStorage<TransactionClient>();
+  private queue: Promise<unknown> = Promise.resolve();
 
   constructor(pool: { connect(): Promise<TransactionClient> }) {
     this.pool = pool;
@@ -121,7 +140,17 @@ export class PostgresGovernanceStore implements GovernanceStore {
     return client.query<Row>(sql, values);
   }
 
-  async transact<T>(tenantId: string, operation: (state: TenantState) => T | Promise<T>) {
+  transact<T>(tenantId: string, operation: (state: TenantState) => T | Promise<T>) {
+    // Keep advisory-lock waiters from occupying the connections used by the platform checks.
+    const result = this.queue.then(() => this.transaction(tenantId, operation));
+    this.queue = result.catch(() => undefined);
+    return result;
+  }
+
+  private async transaction<T>(
+    tenantId: string,
+    operation: (state: TenantState) => T | Promise<T>,
+  ) {
     const client = await this.pool.connect();
     let destroy = false;
     try {

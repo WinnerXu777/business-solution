@@ -3,6 +3,7 @@ import type { RecordRepository } from '@bs/business';
 import type {
   ApprovalAction,
   CallEnvelope,
+  CompleteLlmInput,
   DemoFixtures,
   MessageChannel,
   MessagePreview,
@@ -28,6 +29,7 @@ export interface Execution {
   policyVersion: string;
   now: string;
   approverId: string | undefined;
+  complete: (input: CompleteLlmInput) => Promise<ToolResult>;
   stage: (target: string, approvalId: string, effect: Effect) => void;
 }
 
@@ -300,22 +302,23 @@ export function createToolHandlers(
         const order = orderId ? await records.get('orders', tenantId, orderId) : null;
         if (order === undefined) return denied('not_found');
         if (!providers?.llm) return unavailable();
-        const completion = await providers.llm.complete({
+        const completion = await context.complete({
           model: 'fixture-chat',
           turns: input.turns,
           maxOutputTokens: 24,
           route: input.route,
         });
+        if (completion.state !== 'ok' || !('text' in completion.output)) return completion;
         return ok({
           sessionId: input.sessionId,
-          reply: completion.text,
+          reply: completion.output.text,
           order,
           handoff: order === null,
         });
       }
       case 'llm.complete':
         if (!acceptsRoute(input.route)) return denied('forbidden');
-        return providers?.llm ? ok(await providers.llm.complete(input)) : unavailable();
+        return context.complete(input);
     }
   }
 

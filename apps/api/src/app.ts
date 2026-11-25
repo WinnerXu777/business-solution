@@ -1,3 +1,4 @@
+import { createConnection } from 'node:net';
 import { MemoryRecordRepository, PostgresRecordRepository } from '@bs/business';
 import {
   loadDemoFixtures,
@@ -5,24 +6,42 @@ import {
   type ToolCall,
   type ToolResultMap,
 } from '@bs/contracts';
-import { GovernedGateway, type ToolGateway } from '@bs/core';
+import { createPlatformServices, fixtureAdmin, GovernedGateway, type ToolGateway } from '@bs/core';
 import Fastify, { type FastifyRequest } from 'fastify';
 import pg from 'pg';
 import { createFixtureRouter } from '../../../packages/adapters/src/llm/index.ts';
 import { createMessagingAdapters } from '../../../packages/adapters/src/messaging/index.ts';
+import { sendToMailpit } from '../../../packages/adapters/src/messaging/mailpit.ts';
 import { createFixtureScoringAdapter } from '../../../packages/adapters/src/scoring/index.ts';
 import { PostgresGovernanceStore } from '../../../packages/core/src/governance/store.ts';
 import { registerAutomation } from './automation/index.ts';
-import {
-  createFixtureIdentityVerifier,
-  governanceRoutes,
-  type VerifiedIdentity,
-} from './governance/index.ts';
+import { governanceRoutes, type VerifiedIdentity } from './governance/index.ts';
 import { bearerToken } from './governance/identity.ts';
 import { insightTools, registerInsightsRoutes } from './insights/routes.ts';
+import { createPlatformFixtureIdentityVerifier, platformRoutes } from './platform/index.ts';
+import { platformPostgres } from './platform/postgres.ts';
+import { connectPlatformGateway } from './platform-bootstrap.ts';
+import { simulatedLlmPrices } from '../../../packages/core/src/governance/billing.ts';
+import { readVaultMasterKey } from '../../../packages/core/src/platform/vault.ts';
 
-function fixtureBearerBindings(config: string | undefined, { grants }: DemoFixtures) {
+const fixtureLogins = {
+  'fixture-admin': 'actor-admin',
+  'fixture-operator': 'actor-operator',
+  'fixture-approver': 'actor-approver',
+  'fixture-reader': 'actor-reader',
+  'fixture-isolation': 'actor-isolation',
+};
+
+function fixtureBearerBindings(env: NodeJS.ProcessEnv, { grants }: DemoFixtures) {
+  const config = env.FIXTURE_BEARER_BINDINGS;
+  const identities = [...grants, fixtureAdmin];
   const bindings = new Map<string, VerifiedIdentity>();
+  if (env.BS_FIXTURE_LOGIN === '1') {
+    for (const [token, actorId] of Object.entries(fixtureLogins)) {
+      const { tenantId, actor } = identities.find((row) => row.actor.id === actorId)!;
+      bindings.set(token, { tenantId, actor });
+    }
+  }
   if (config === undefined) return bindings;
 
   const invalid = () => new Error('Invalid FIXTURE_BEARER_BINDINGS configuration.');
@@ -37,7 +56,7 @@ function fixtureBearerBindings(config: string | undefined, { grants }: DemoFixtu
   for (const [token, binding] of Object.entries(parsed as Record<string, unknown>)) {
     if (!/^[^\s,]+$/.test(token) || !binding || typeof binding !== 'object') throw invalid();
     const { tenantId, actorId } = binding as Record<string, unknown>;
-    const grant = grants.find((row) => row.tenantId === tenantId && row.actor.id === actorId);
+    const grant = identities.find((row) => row.tenantId === tenantId && row.actor.id === actorId);
     if (!grant) throw invalid();
     bindings.set(token, { tenantId: grant.tenantId, actor: grant.actor });
   }
@@ -46,10 +65,6 @@ function fixtureBearerBindings(config: string | undefined, { grants }: DemoFixtu
 
 export function createApp(env: NodeJS.ProcessEnv = process.env) {
   const fixtures = loadDemoFixtures();
-  const verifyIdentity = createFixtureIdentityVerifier(
-    fixtureBearerBindings(env.FIXTURE_BEARER_BINDINGS, fixtures),
-    fixtures,
-  );
   const app = Fastify();
   const pool = env.DATABASE_URL ? new pg.Pool({ connectionString: env.DATABASE_URL }) : undefined;
   if (pool) {
@@ -60,21 +75,55 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
   const records = store
     ? new PostgresRecordRepository(store)
     : new MemoryRecordRepository(fixtures);
-  const gateway = new GovernedGateway({
+  const startedAt = performance.now();
+  const now = pool
+    ? () => new Date().toISOString()
+    : () => new Date(Date.parse(fixtures.asOf) + performance.now() - startedAt).toISOString();
+  const governed = new GovernedGateway({
     fixtures,
     records,
     store,
-    now: store ? () => new Date().toISOString() : undefined,
+    now,
+    moduleOverride: (tenantId, module) => services.entitlements.override(tenantId, module),
+    resolveLlmBinding: (tenantId) =>
+      services.resolveBinding(tenantId, 'llm', {
+        operation: 'inference',
+        dataClasses: ['synthetic'],
+      }),
+    billing: () => services.billing,
+    onBillingError: () => app.log.error('Governance billing ingestion failed'),
     providers: {
       llm: createFixtureRouter(),
-      messages: createMessagingAdapters({
-        enabled: env.BS_MAILPIT === '1',
-        host: env.BS_MAILPIT_HOST,
-        port: Number(env.BS_MAILPIT_PORT ?? 1025),
-      }),
+      messages: createMessagingAdapters(
+        {
+          enabled: env.BS_MAILPIT === '1',
+          host: env.BS_MAILPIT_HOST,
+          port: Number(env.BS_MAILPIT_PORT ?? 1025),
+        },
+        env.BS_MAILPIT_HOST === 'mailpit'
+          ? (preview, id, options) =>
+              sendToMailpit(preview, id, { ...options, host: '127.0.0.1' }, (_host, port) =>
+                createConnection({ host: 'mailpit', port }),
+              )
+          : undefined,
+      ),
       scoring: createFixtureScoringAdapter(),
     },
   });
+  const services: ReturnType<typeof createPlatformServices> = createPlatformServices({
+    fixtures,
+    gateway: governed,
+    now,
+    persistence: pool ? platformPostgres(pool) : undefined,
+    fixtureUsageBridge: false,
+    billing: { providerPrices: simulatedLlmPrices },
+    vaultMasterKey: readVaultMasterKey(env),
+  });
+  const verifyIdentity = createPlatformFixtureIdentityVerifier(
+    fixtureBearerBindings(env, fixtures),
+    services.directory,
+  );
+  const { transport: gateway, reports } = connectPlatformGateway(services, governed);
   const resolveIdentity = (request: FastifyRequest) => {
     const token = bearerToken(request.headers.authorization);
     return token ? verifyIdentity(token) : undefined;
@@ -87,6 +136,23 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
         grant.actor.kind === identity.actor.kind &&
         grant.role === 'approver',
     );
+
+  app.register(async (instance) => {
+    instance.addHook('onRequest', (request, _reply, done) => {
+      const path = request.url.split('?')[0];
+      if (!['/platform/v1/modules', '/platform/v1/audit', '/platform/v1/usage'].includes(path)) {
+        done();
+        return;
+      }
+      void Promise.resolve(resolveIdentity(request))
+        .then((identity) => identity && governed.reportingSnapshot(identity.tenantId))
+        .then((snapshot) => {
+          if (snapshot) reports.run(snapshot, done);
+          else done();
+        }, done);
+    });
+    await instance.register(platformRoutes, { services, verifyIdentity });
+  });
 
   app.register(governanceRoutes, {
     gateway,
@@ -146,6 +212,18 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
           const identity = identities.get(request);
           if (identity && (role === 'requester' || canReview(identity))) return identity;
         },
+        async authorizeRuntime(scope, capability) {
+          const role = services.directory.resolve(scope)?.role;
+          if (
+            role !== 'operator' &&
+            !(role === 'approver' && (capability === 'bot' || capability === 'workflow'))
+          ) {
+            return false;
+          }
+          const module = capability === 'bot' ? 'ai' : 'workflows';
+          const modules = await services.entitlements.listing(scope.tenantId, []);
+          return modules.some((entry) => entry.moduleId === module && entry.enabled);
+        },
         sign: (envelope, approvalId) => gateway.signApproval(envelope, approvalId),
       });
     },
@@ -157,7 +235,7 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
     let active: Promise<void> | undefined;
     const interval = setInterval(() => {
       active ??= (async () => {
-        for (const tenant of tenants) await gateway.dispatchOutbox(tenant);
+        for (const tenant of tenants) await governed.dispatchOutbox(tenant);
       })()
         .catch((err) => app.log.error({ err }, 'Outbox dispatch failed'))
         .finally(() => {

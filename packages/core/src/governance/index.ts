@@ -8,6 +8,7 @@ import {
   type Approval,
   type AuditEntry,
   type CallEnvelope,
+  type CompleteLlmInput,
   type DemoFixtures,
   type ModuleId,
   type ToolCall,
@@ -16,9 +17,11 @@ import {
   type ToolResultMap,
 } from '@bs/contracts';
 import type { ToolGateway } from '../index.ts';
+import { PlatformError, type BillingLedger, type ResolvedBinding } from '../platform/index.ts';
+import { GovernanceBilling, billableOutcome, inputTokens, spendAllowed } from './billing.ts';
 import { ApprovalLedger, matchesBinding } from './approvals.ts';
 import { OutboxWorker } from './outbox.ts';
-import { denied, digest, invalidInput, isRetryableOutcome, unavailable } from './results.ts';
+import { denied, digest, invalidInput, isRetryableOutcome, ok, unavailable } from './results.ts';
 import {
   MemoryGovernanceStore,
   type GovernanceStore,
@@ -35,11 +38,15 @@ export interface GovernedGatewayOptions {
   now?: () => string;
   policyVersion?: () => string;
   workerClock?: () => number;
+  resolveLlmBinding?: (tenantId: string) => Promise<ResolvedBinding>;
+  billing?: () => Pick<BillingLedger, 'plan' | 'recordUsage'>;
+  onBillingError?: (error: unknown) => void;
+  moduleOverride?: (tenantId: string, module: ModuleId) => Promise<boolean | undefined>;
 }
 
 function allows(role: ActorGrant['role'] | undefined, tool: ToolName) {
   if (tool === 'purchase.order.approve') return role === 'approver';
-  return role !== undefined && (tool.endsWith('.read') || role === 'operator');
+  return role !== undefined && role !== 'admin' && (tool.endsWith('.read') || role === 'operator');
 }
 
 function actionKey({ tenantId, actor, idempotencyKey }: CallEnvelope, action: string) {
@@ -53,20 +60,29 @@ export class GovernedGateway implements ToolGateway {
   private readonly handlers: ReturnType<typeof createToolHandlers>;
   private readonly store: GovernanceStore;
   private readonly worker: OutboxWorker;
+  private readonly billing?: GovernanceBilling;
+  private readonly options: GovernedGatewayOptions;
+  private readonly moduleOverride: GovernedGatewayOptions['moduleOverride'];
   private queue: Promise<unknown> = Promise.resolve();
 
   constructor(options: GovernedGatewayOptions = {}) {
+    this.options = options;
     this.fixtures = structuredClone(options.fixtures ?? loadDemoFixtures());
     const startedAt = performance.now();
     const fixtureEpoch = Date.parse(this.fixtures.asOf);
     this.now =
       options.now ?? (() => new Date(fixtureEpoch + performance.now() - startedAt).toISOString());
     this.policyVersion = options.policyVersion ?? (() => 'fixture-policy-v1');
+    this.moduleOverride = options.moduleOverride;
     this.store = options.store ?? new MemoryGovernanceStore();
+    if (options.billing) this.billing = new GovernanceBilling(options.billing, this.store);
     const records = options.records ?? new MemoryRecordRepository(this.fixtures);
     this.handlers = createToolHandlers(records, this.fixtures, options.providers);
     this.worker = new OutboxWorker({
       store: this.store,
+      quote: this.billing
+        ? (intent) => billableOutcome(intent.request, this.now(), intent.id, intent.effect)
+        : undefined,
       records,
       providers: options.providers,
       clock: options.workerClock,
@@ -81,6 +97,23 @@ export class GovernedGateway implements ToolGateway {
           if (row) row.grant.state = 'denied';
           return denied('invalid_approval');
         }
+        const blocked = await this.checkEntitlement(
+          state,
+          envelope.tenantId,
+          toolModules[tool],
+          this.now(),
+          intent.id,
+        );
+        if (blocked || !this.billing) return blocked;
+        const reservation = state.rows.outbox.get(intent.id)?.billingReservation;
+        if (!reservation) return;
+        const billingBlock = await this.billing.reserve(
+          state,
+          envelope.tenantId,
+          reservation,
+          intent.id,
+        );
+        if (billingBlock) return billingBlock;
         return this.checkEntitlement(
           state,
           envelope.tenantId,
@@ -95,7 +128,11 @@ export class GovernedGateway implements ToolGateway {
         if (!outcome) throw new Error('Outbox outcome missing.');
         outcome.result = result;
         const now = this.now();
-        if (result.state === 'ok') this.meter(state, envelope, tool, intent.id, now);
+        if (result.state === 'ok') {
+          const occurredAt =
+            state.rows.outbox.get(intent.id)?.billingReservation?.occurredAt ?? now;
+          this.meter(state, intent.request, result, intent.id, occurredAt);
+        }
         this.appendAudit(
           state,
           { ...envelope, source: 'worker' },
@@ -132,6 +169,15 @@ export class GovernedGateway implements ToolGateway {
     );
   }
 
+  reportingSnapshot(tenantId: string) {
+    return this.serialize(() =>
+      this.store.transact(tenantId, ({ audit, rows }) => ({
+        audit: audit.map(({ hash: _hash, previousHash: _previousHash, ...entry }) => entry),
+        usage: [...rows.usage.values()],
+      })),
+    );
+  }
+
   listUsage(tenantId: string) {
     return this.store.transact(tenantId, ({ rows }) => [...rows.usage.values()]);
   }
@@ -156,13 +202,22 @@ export class GovernedGateway implements ToolGateway {
   }
 
   dispatchOutbox(tenantId: string) {
-    return this.serialize(() => this.worker.drain(tenantId));
+    return this.serialize(async () => {
+      await this.flushBilling(tenantId);
+      await this.worker.drain(tenantId);
+      await this.flushBilling(tenantId);
+    });
   }
 
   call<Request extends ToolCall>(request: Request): Promise<ToolResultMap[Request['tool']]>;
   call(request: ToolCall): Promise<ToolResult> {
     const snapshot = structuredClone(request);
-    return this.serialize(() => this.execute(snapshot));
+    return this.serialize(async () => {
+      await this.flushBilling(snapshot.envelope.tenantId);
+      const result = await this.execute(snapshot);
+      await this.flushBilling(snapshot.envelope.tenantId);
+      return result;
+    });
   }
 
   listApprovals(tenantId: string, state?: Approval['state']) {
@@ -171,7 +226,13 @@ export class GovernedGateway implements ToolGateway {
       const result: Approval[] = [];
       for (const row of approvals.list()) {
         await this.refresh(row);
-        if (state === undefined || state === row.grant.state) result.push(row.grant);
+        const effective = row.rejectionReason !== undefined ? 'rejected' : row.grant.state;
+        // Preserve the filter used by callers from before the terminal states were added.
+        const visible =
+          state === 'denied' && (effective === 'expired' || effective === 'rejected')
+            ? 'denied'
+            : effective;
+        if (state === undefined || state === visible) result.push({ ...row.grant, state: visible });
       }
       return result;
     });
@@ -179,10 +240,13 @@ export class GovernedGateway implements ToolGateway {
 
   /** PO approval signs and queues creation in the same call. */
   signApproval(envelope: CallEnvelope, id: string) {
-    return this.decide(envelope, id, 'approval.sign', (row, state) => {
-      if (row.grant.tool === 'purchase.order.approve' || row.grant.state !== 'pending')
+    return this.decide(envelope, id, 'approval.sign', async (row, state) => {
+      if (
+        row.grant.tool === 'purchase.order.approve' ||
+        (row.grant.state !== 'pending' && row.grant.state !== 'approved')
+      )
         return denied('invalid_approval');
-      const blocked = this.checkEntitlement(
+      const blocked = await this.checkEntitlement(
         state,
         row.grant.tenantId,
         toolModules[row.grant.tool],
@@ -194,18 +258,23 @@ export class GovernedGateway implements ToolGateway {
     });
   }
 
-  reject(envelope: CallEnvelope, id: string, reason: string) {
+  rejectApproval(envelope: CallEnvelope, id: string, reason: string) {
     const trimmed = reason.trim();
     return this.decide(envelope, id, 'approval.reject', (row) => {
       if (!trimmed || trimmed.length > 500)
         return invalidInput('A rejection reason of 1 to 500 characters is required.');
-      if (row.grant.state === 'denied' && row.rejectionReason === trimmed) return row.grant;
+      if (row.rejectionReason === trimmed) return { ...row.grant, state: 'rejected' };
       if (row.grant.state !== 'pending' && row.grant.state !== 'approved')
         return denied('invalid_approval');
       row.rejectionReason = trimmed;
-      row.grant.state = 'denied';
+      row.grant.state = 'rejected';
       return row.grant;
     });
+  }
+
+  async reject(envelope: CallEnvelope, id: string, reason: string) {
+    const result = await this.rejectApproval(envelope, id, reason);
+    return 'code' in result ? result : { ...result, state: 'denied' as const };
   }
 
   private decide<
@@ -214,7 +283,7 @@ export class GovernedGateway implements ToolGateway {
     envelope: CallEnvelope,
     id: string,
     action: string,
-    decision: (row: StoredApproval, state: TenantState) => Result,
+    decision: (row: StoredApproval, state: TenantState) => Result | Promise<Result>,
   ) {
     const snapshot = structuredClone(envelope);
     return this.serialize(() =>
@@ -228,7 +297,7 @@ export class GovernedGateway implements ToolGateway {
           result = denied('invalid_approval');
         } else {
           await this.refresh(row);
-          result = decision(row, state);
+          result = await decision(row, state);
         }
         this.appendAudit(
           state,
@@ -269,7 +338,8 @@ export class GovernedGateway implements ToolGateway {
       (row.grant.state === 'pending' || row.grant.state === 'approved') &&
       !(await this.current(row))
     ) {
-      row.grant.state = 'denied';
+      row.grant.state =
+        Date.parse(row.grant.expiresAt) <= Date.parse(this.now()) ? 'expired' : 'denied';
     }
   }
 
@@ -288,7 +358,7 @@ export class GovernedGateway implements ToolGateway {
     )?.role;
   }
 
-  private checkEntitlement(
+  private async checkEntitlement(
     state: TenantState,
     tenantId: string,
     module: ModuleId,
@@ -304,7 +374,8 @@ export class GovernedGateway implements ToolGateway {
         Date.parse(row.windowStart) <= instant &&
         instant < Date.parse(row.windowEnd),
     );
-    if (!entitlement?.flag.enabled) return denied('module_disabled');
+    const override = await this.moduleOverride?.(tenantId, module);
+    if (!entitlement || !(override ?? entitlement.flag.enabled)) return denied('module_disabled');
     const inWindow = (time: string) =>
       Date.parse(entitlement.windowStart) <= Date.parse(time) &&
       Date.parse(time) < Date.parse(entitlement.windowEnd);
@@ -323,6 +394,74 @@ export class GovernedGateway implements ToolGateway {
     if (used + reserved >= entitlement.allowance) return denied('quota_exceeded');
   }
 
+  private async flushBilling(tenantId: string) {
+    await this.billing
+      ?.flush(tenantId)
+      .catch((error: unknown) => this.options.onBillingError?.(error));
+  }
+
+  private async complete(
+    state: TenantState,
+    envelope: CallEnvelope,
+    actionId: string,
+    occurredAt: string,
+    input: CompleteLlmInput,
+    tool: ToolName,
+    onBinding: (pin: { providerId: string; bindingVersion: number }) => void,
+  ): Promise<ToolResult> {
+    const adapter = this.options.providers?.llm;
+    if (!adapter) return unavailable();
+    if (!this.options.resolveLlmBinding) return ok(await adapter.complete(input));
+    let binding: ResolvedBinding;
+    try {
+      binding = await this.options.resolveLlmBinding(envelope.tenantId);
+    } catch (error) {
+      if (error instanceof PlatformError && error.code === 'forbidden') return denied('forbidden');
+      return unavailable();
+    }
+    const routeKind =
+      binding.version === 1
+        ? input.route.kind
+        : binding.provider.mode === 'native'
+          ? 'native'
+          : 'byo';
+    const route = this.fixtures.llmRoutes.find(({ kind }) => kind === routeKind);
+    if (!route) return unavailable();
+    const spendBlock = spendAllowed(binding, routeKind);
+    if (spendBlock) return spendBlock;
+    const reservation = {
+      skuId: 'platform' as const,
+      unit: 'tokens',
+      outcomeId: actionId,
+      quantity: inputTokens(input.turns) + input.maxOutputTokens,
+      occurredAt,
+    };
+    const blocked = await this.billing?.reserve(state, envelope.tenantId, reservation, actionId);
+    if (blocked) return blocked;
+    const entitlementBlock = await this.checkEntitlement(
+      state,
+      envelope.tenantId,
+      toolModules[tool],
+      this.now(),
+    );
+    if (entitlementBlock) return entitlementBlock;
+    onBinding({
+      providerId: binding.version === 1 ? route.providerId : binding.provider.providerId,
+      bindingVersion: binding.version,
+    });
+    const completion = await adapter.complete({ ...input, route });
+    const quantity = completion.inputTokens + completion.outputTokens;
+    if (quantity > reservation.quantity) throw new Error('Fixture exceeded reserved token units.');
+    this.billing?.inference(state, envelope, { ...reservation, quantity }, binding, routeKind);
+    return ok({
+      ...completion,
+      route: {
+        ...completion.route,
+        providerId: binding.version === 1 ? route.providerId : binding.provider.providerId,
+      },
+    });
+  }
+
   private async execute(request: ToolCall): Promise<ToolResult> {
     const { tool, envelope, input } = request;
     const { tenantId, actor } = envelope;
@@ -335,6 +474,7 @@ export class GovernedGateway implements ToolGateway {
         const cached = state.rows.outcome.get(actionId);
         let dispatch = false;
         let result: ToolResult;
+        let llmBinding: { providerId: string; bindingVersion: number } | undefined;
         if (!allows(this.role(envelope), tool)) {
           result = denied('forbidden');
         } else if (cached) {
@@ -351,13 +491,24 @@ export class GovernedGateway implements ToolGateway {
             if (approval) {
               const row = state.rows.approval.get(approval.id);
               if (row) await this.refresh(row);
-              if (row?.grant.state === 'denied') result = denied('invalid_approval');
+              if (row && ['denied', 'rejected', 'expired'].includes(row.grant.state)) {
+                result = denied('invalid_approval');
+              }
             }
             const job = state.rows.outbox.get(actionId);
             dispatch = job?.status === 'queued' || job?.status === 'retryable';
           }
         } else {
-          const blocked = this.checkEntitlement(state, tenantId, toolModules[tool], occurredAt);
+          const entitlementBlock = await this.checkEntitlement(
+            state,
+            tenantId,
+            toolModules[tool],
+            occurredAt,
+          );
+          const reservation = billableOutcome(request, occurredAt, actionId);
+          const blocked =
+            entitlementBlock ??
+            (reservation && (await this.billing?.reserve(state, tenantId, reservation, actionId)));
           result =
             blocked ??
             (await this.handlers.dispatch(
@@ -373,6 +524,10 @@ export class GovernedGateway implements ToolGateway {
                     grant.role === 'approver' &&
                     grant.actor.id !== actor.id,
                 )?.actor.id,
+                complete: (input) =>
+                  this.complete(state, envelope, actionId, occurredAt, input, tool, (binding) => {
+                    llmBinding = binding;
+                  }),
                 stage: (target, approvalId, effect) => {
                   dispatch = true;
                   state.rows.intent.set(actionId, {
@@ -397,7 +552,7 @@ export class GovernedGateway implements ToolGateway {
           if (dispatch || (result.state !== 'unknown' && !isRetryableOutcome(result))) {
             state.rows.outcome.set(actionId, { fingerprint, result: structuredClone(result) });
           }
-          if (result.state === 'ok') this.meter(state, envelope, tool, actionId, occurredAt);
+          if (result.state === 'ok') this.meter(state, request, result, actionId, occurredAt);
           if (
             result.state === 'denied' &&
             (result.code === 'invalid_approval' ||
@@ -410,7 +565,16 @@ export class GovernedGateway implements ToolGateway {
             if (row?.grant.tool === tool) await this.refresh(row);
           }
         }
-        this.appendAudit(state, envelope, tool, actionId, policyVersion, result.state, occurredAt);
+        this.appendAudit(
+          state,
+          envelope,
+          tool,
+          actionId,
+          policyVersion,
+          result.state,
+          occurredAt,
+          llmBinding,
+        );
         return { result, dispatch };
       })
       .catch(() => ({ result: unavailable(), dispatch: false }));
@@ -420,21 +584,24 @@ export class GovernedGateway implements ToolGateway {
 
   private meter(
     state: TenantState,
-    envelope: CallEnvelope,
-    tool: ToolName,
+    request: ToolCall,
+    result: ToolResult,
     actionId: string,
     occurredAt: string,
   ) {
+    const { envelope, tool } = request;
     const id = 'usage-' + actionId;
-    state.rows.usage.set(id, {
+    const counter = {
       id,
       tenantId: envelope.tenantId,
       module: toolModules[tool],
       outcomeId: actionId,
-      unit: 'actions',
+      unit: 'actions' as const,
       quantity: 1,
       occurredAt,
-    });
+    };
+    state.rows.usage.set(id, counter);
+    this.billing?.outcome(state, request, result, counter);
   }
 
   private appendAudit(
@@ -445,6 +612,7 @@ export class GovernedGateway implements ToolGateway {
     policyVersion: string,
     result: AuditEntry['state'],
     occurredAt: string,
+    llmBinding?: { providerId: string; bindingVersion: number },
   ) {
     const previousHash = state.audit.at(-1)?.hash ?? null;
     const entry = {
@@ -460,6 +628,7 @@ export class GovernedGateway implements ToolGateway {
       state: result,
       occurredAt,
       previousHash,
+      ...llmBinding,
     };
     state.audit.push({ ...entry, hash: digest(entry) });
   }

@@ -7,6 +7,7 @@
     "node": ">=24.4.1 <25"
   },
   "scripts": {
+    "dev": "node infra/dev.mjs",
     "format": "prettier --write .github README.md docs/personal-plan/milestone-1.md apps infra packages scripts tests package.json pnpm-workspace.yaml tsconfig.json",
     "format:check": "prettier --check .github README.md docs/personal-plan/milestone-1.md apps infra packages scripts tests package.json pnpm-workspace.yaml tsconfig.json",
     "lint": "node scripts/lint.mjs && tsc --noUnusedLocals --noUnusedParameters --noFallthroughCasesInSwitch",

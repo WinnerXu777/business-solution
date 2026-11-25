@@ -49,7 +49,7 @@ class Approval(ContractModel):
     sourceVersion: Count
     policyVersion: Id
     expiresAt: Timestamp
-    state: Literal["pending", "approved", "denied", "consumed"]
+    state: Literal["pending", "approved", "denied", "consumed", "rejected", "expired"]
 
 
 class PendingApproval(ContractModel):
@@ -257,7 +257,7 @@ class Turn(ContractModel):
 class ActorGrant(ContractModel):
     tenantId: Id
     actor: Actor
-    role: Literal["operator", "approver", "reader"]
+    role: Literal["operator", "approver", "reader", "admin"]
 
 
 class ChatAudioFixture(ContractModel):

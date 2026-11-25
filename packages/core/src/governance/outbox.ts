@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { ProviderAdapters } from '@bs/adapters';
 import type { RecordRepository } from '@bs/business';
 import type { DeliveryReceipt, Denied, ToolResult } from '@bs/contracts';
+import type { Reservation } from './billing.ts';
 import { digest, denied, isRetryableOutcome, ok, unavailable, unknownOutcome } from './results.ts';
 import type { Effect, GovernanceStore, OutboxJob, StoredIntent, TenantState } from './store.ts';
 
@@ -11,6 +12,7 @@ interface WorkerOptions {
   providers?: Partial<ProviderAdapters>;
   authorize(state: TenantState, intent: StoredIntent): Promise<Denied | undefined>;
   settle(state: TenantState, intent: StoredIntent, result: ToolResult): void;
+  quote?: (intent: StoredIntent) => Reservation | undefined;
   clock?: () => number;
 }
 
@@ -59,6 +61,8 @@ export class OutboxWorker {
       job.unresolved = job.status === 'running' || job.status === 'unknown';
       job.status = 'running';
       job.claim = claim;
+      const intent = rows.intent.get(id);
+      if (!job.unresolved && intent) job.billingReservation = this.options.quote?.(intent);
       job.nextAttemptAt = this.now() + claimTimeout;
       return true;
     });
@@ -81,7 +85,8 @@ export class OutboxWorker {
         if (reconciliation !== notApplied) return this.finish(state, job, intent, reconciliation);
       }
 
-      const blocked = await this.options.authorize(state, intent);
+      // Authorization failed before any effect was attempted.
+      const blocked = await this.options.authorize(state, intent).catch(() => unavailable());
       if (blocked) return this.finish(state, job, intent, blocked);
       if (job.attempts >= maxAttempts) {
         job.reviewReason = 'attempts_exhausted';

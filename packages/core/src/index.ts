@@ -6,3 +6,4 @@ export interface ToolGateway {
 
 export { FakeGateway } from './fake-gateway.ts';
 export { GovernedGateway } from './governance/index.ts';
+export { createPlatformServices, fixtureAdmin } from './platform/index.ts';

@@ -1,5 +1,11 @@
 name: ${COMPOSE_PROJECT_NAME:-rivetquay}
 
+x-app: &app
+  image: rivetquay-fixture:local
+  build:
+    context: ../..
+    dockerfile: infra/ci.Dockerfile
+
 services:
   postgres:
     image: postgres:17.7-alpine
@@ -27,44 +33,104 @@ services:
       - '127.0.0.1:${MAILPIT_SMTP_PORT:-1025}:1025'
     volumes:
       - maildata:/data
+    healthcheck:
+      test: ['CMD', '/mailpit', 'readyz']
+      interval: 5s
+      timeout: 3s
+      retries: 15
 
   api:
-    profiles: [placeholders]
-    image: node:24.4.1-bookworm-slim
+    <<: *app
     command:
-      [
-        'node',
-        '-e',
-        "require('node:http').createServer((_, res) => res.end('API placeholder')).listen(3000, '0.0.0.0')",
-      ]
+      - sh
+      - -ec
+      - |
+        if [ -z "$$BS_PLATFORM_VAULT_MASTER_KEY" ]; then unset BS_PLATFORM_VAULT_MASTER_KEY; fi
+        node infra/migrate.mjs
+        chmod +x infra/compose/worker-client.mjs
+        exec node apps/api/src/server.ts
+    environment:
+      API_HOST: 0.0.0.0
+      DATABASE_URL: postgres://demo:demo-local-only@postgres:5432/demo
+      BS_FIXTURE_LOGIN: '1'
+      BS_MAILPIT: '1'
+      BS_MAILPIT_HOST: mailpit
+      BS_WORKER_PYTHON: /repo/infra/compose/worker-client.mjs
+      BS_WORKER_SOCKET: /run/fixture-worker/runtime.sock
+      BS_PLATFORM_VAULT_MASTER_KEY: ${BS_PLATFORM_VAULT_MASTER_KEY:-}
     ports:
       - '127.0.0.1:${API_PORT:-3000}:3000'
+    volumes:
+      - worker-socket:/run/fixture-worker
     depends_on:
       postgres:
         condition: service_healthy
+      mailpit:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(r => { if (!r.ok) process.exit(1) })",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 15
 
   web:
-    profiles: [placeholders]
-    image: node:24.4.1-bookworm-slim
+    <<: *app
     command:
       [
-        'node',
-        '-e',
-        "require('node:http').createServer((_, res) => res.end('Web placeholder')).listen(5173, '0.0.0.0')",
+        'pnpm',
+        '--filter',
+        '@bs/web',
+        'exec',
+        'vite',
+        '--configLoader',
+        'native',
+        '--host',
+        '0.0.0.0',
+        '--strictPort',
       ]
+    environment:
+      VITE_API_PROXY_TARGET: http://api:3000
+      VITE_FIXTURE_LOGIN: '1'
     ports:
       - '127.0.0.1:${WEB_PORT:-5173}:5173'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:5173/platform/v1/health', { headers: { Authorization: 'Bearer fixture-operator' } }).then(r => { if (!r.ok) process.exit(1) })",
+        ]
+      interval: 5s
+      timeout: 3s
+      retries: 15
 
   worker:
-    profiles: [placeholders]
-    image: python:3.12.12-slim-bookworm
-    command:
-      ['python', '-c', "import time; print('Worker placeholder', flush=True); time.sleep(86400)"]
-    depends_on:
-      postgres:
-        condition: service_healthy
+    <<: *app
+    command: ['/repo/.venv/bin/python', 'infra/compose/worker_socket.py']
+    environment:
+      BS_WORKER_SOCKET: /run/fixture-worker/runtime.sock
+    volumes:
+      - worker-socket:/run/fixture-worker
+    healthcheck:
+      test: ['CMD-SHELL', 'test -S "$$BS_WORKER_SOCKET"']
+      interval: 5s
+      timeout: 3s
+      retries: 15
 
 volumes:
+  worker-socket:
   pgdata:
     name: ${POSTGRES_VOLUME:-${COMPOSE_PROJECT_NAME:-rivetquay}_pgdata}
   maildata:

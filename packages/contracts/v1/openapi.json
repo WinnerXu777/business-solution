@@ -859,7 +859,9 @@
               "pending",
               "approved",
               "denied",
-              "consumed"
+              "consumed",
+              "rejected",
+              "expired"
             ]
           }
         },
@@ -1697,7 +1699,8 @@
             "enum": [
               "operator",
               "approver",
-              "reader"
+              "reader",
+              "admin"
             ]
           }
         },

@@ -59,11 +59,15 @@ export class ApprovalLedger {
       const current =
         grant.approverId === approverId && matchesBinding(row, intent, policyVersion, now);
       if (current) {
-        if (grant.state === 'consumed' || row.rejectionReason !== undefined)
+        if (
+          grant.state === 'consumed' ||
+          grant.state === 'rejected' ||
+          row.rejectionReason !== undefined
+        )
           return denied('invalid_approval');
-        if (grant.state !== 'denied') return grant;
+        if (grant.state === 'pending' || grant.state === 'approved') return grant;
       } else if (grant.state === 'pending' || grant.state === 'approved') {
-        grant.state = 'denied';
+        grant.state = Date.parse(grant.expiresAt) <= Date.parse(now) ? 'expired' : 'denied';
       }
     }
 
@@ -108,7 +112,7 @@ export class ApprovalLedger {
         : grant.state === 'approved' && grant.requestedBy === envelope.actor.id;
     if (!authorized || grant.tool !== intent.tool || row.target !== intent.target) return false;
     if (!matchesBinding(row, intent, policyVersion, now)) {
-      grant.state = 'denied';
+      grant.state = Date.parse(grant.expiresAt) <= Date.parse(now) ? 'expired' : 'denied';
       return false;
     }
     grant.state = 'consumed';

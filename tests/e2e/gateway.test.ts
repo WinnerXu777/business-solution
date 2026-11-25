@@ -289,3 +289,42 @@ test('insight and completion adapters have deterministic fixture outcomes', asyn
     assert.equal(completion.route.providerId, route.providerId);
   }
 });
+test('a win-back failure with zero receipts permits a matching retry and protects its key', async () => {
+  const providers = createFakeProviders();
+  const send = providers.messages.email.send;
+  let attempts = 0;
+  providers.messages.email.send = (preview, actionId) => {
+    attempts++;
+    if (attempts === 1) {
+      return {
+        state: 'failed',
+        code: 'provider_error',
+        message: 'Fixture retry',
+        retryable: true,
+      };
+    }
+    return send(preview, actionId);
+  };
+  const gateway = new FakeGateway({ providers });
+  const input = { templateId: 'win-back-v1', mode: 'run', approvalId: null } as const;
+  const pending = await gateway.call(request('workflow.template.run', input, 'prepare-retry'));
+  assert.ok(pending.state === 'pending_approval');
+  const grant = gateway.approveFixture(envelope('sign-retry', approver), pending.approval.id);
+  assert.equal(grant.state, 'approved');
+  const run = request(
+    'workflow.template.run',
+    {
+      ...input,
+      approvalId: pending.approval.id,
+    },
+    'run-retry',
+  );
+  assert.equal((await gateway.call(run)).state, 'failed');
+  const changed = await gateway.call({ ...run, input });
+  assert.equal(changed.state === 'denied' && changed.code, 'idempotency_conflict');
+  const recovered = await gateway.call(run);
+  assert.equal(output(recovered).receipts.length, 2);
+  assert.deepEqual(await gateway.call(run), recovered);
+  assert.equal(attempts, 3);
+  assert.equal(gateway.usage().length, 1);
+});

@@ -59,7 +59,7 @@
       "sourceVersion": { "$ref": "#/$defs/Count" },
       "policyVersion": { "$ref": "#/$defs/Id" },
       "expiresAt": { "$ref": "#/$defs/Timestamp" },
-      "state": { "enum": ["pending", "approved", "denied", "consumed"] }
+      "state": { "enum": ["pending", "approved", "denied", "consumed", "rejected", "expired"] }
     },
     "required": [
       "id",
@@ -444,7 +444,7 @@
     "properties": {
       "tenantId": { "$ref": "#/$defs/Id" },
       "actor": { "$ref": "#/$defs/Actor" },
-      "role": { "enum": ["operator", "approver", "reader"] }
+      "role": { "enum": ["operator", "approver", "reader", "admin"] }
     },
     "required": ["tenantId", "actor", "role"]
   },

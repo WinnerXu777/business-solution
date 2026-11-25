@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { MessageChannel, MessagePreview, Order } from '@bs/contracts';
-import { api, type ApprovalItem, type RouteKind, type WorkflowRun } from './api.ts';
+import { useAutomation, type ApprovalItem, type RouteKind, type WorkflowRun } from './api.ts';
 import { MessageCard, Notice, Panel, useTask } from './panels.tsx';
 import { channels, money, resultText } from './presentation.ts';
 import { playSpeechLoop } from './speech.ts';
@@ -41,6 +41,7 @@ function OrderSummary({ order }: { order: Order }) {
 }
 
 function Lookup() {
+  const api = useAutomation();
   const [id, setId] = useState('ord-001');
   const [order, setOrder] = useState<Order | null>(null);
   const task = useTask();
@@ -70,7 +71,8 @@ function Lookup() {
   );
 }
 
-function Chat({ route, onChange }: { route: RouteKind; onChange: () => void }) {
+export function Chat({ route, onChange }: { route: RouteKind; onChange: () => void }) {
+  const api = useAutomation();
   const [session] = useState(() => crypto.randomUUID());
   const [prompt, setPrompt] = useState('');
   const [turns, setTurns] = useState<{ prompt: string; response: string; order: Order | null }[]>(
@@ -126,7 +128,8 @@ function Chat({ route, onChange }: { route: RouteKind; onChange: () => void }) {
   );
 }
 
-function BrowserVoice({ route }: { route: RouteKind }) {
+export function BrowserVoice({ route }: { route: RouteKind }) {
+  const api = useAutomation();
   const [session] = useState(() => crypto.randomUUID());
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
@@ -193,6 +196,7 @@ function BrowserVoice({ route }: { route: RouteKind }) {
 }
 
 function Drafts({ onChange }: { onChange: () => void }) {
+  const api = useAutomation();
   const [pr, setPr] = useState('pr-001');
   const [invoice, setInvoice] = useState('inv-001');
   const [selected, setSelected] = useState<MessageChannel>('email');
@@ -291,6 +295,7 @@ function Drafts({ onChange }: { onChange: () => void }) {
 }
 
 function Inbox({ items, onChange }: { items: ApprovalItem[]; onChange: () => void }) {
+  const api = useAutomation();
   const task = useTask();
   return (
     <Panel title="Approval inbox" aside={<span className="pill">actor-approver</span>}>
@@ -353,7 +358,8 @@ function Inbox({ items, onChange }: { items: ApprovalItem[]; onChange: () => voi
   );
 }
 
-export function Portal() {
+export function Portal({ role }: { role: string }) {
+  const api = useAutomation();
   const [view, setView] = useState<(typeof views)[number]['id']>('desk');
   const [route, setRoute] = useState<RouteKind>('native');
   const [inbox, setInbox] = useState<ApprovalItem[]>([]);
@@ -363,7 +369,7 @@ export function Portal() {
   const refresh = () => setRevision((value) => value + 1);
   useEffect(() => {
     let current = true;
-    void Promise.all([api.approvals(), api.history()])
+    void Promise.all([role === 'approver' ? api.approvals() : Promise.resolve([]), api.history()])
       .then(([approvals, runs]) => {
         if (!current) return;
         setInbox(approvals);
@@ -376,7 +382,7 @@ export function Portal() {
     return () => {
       current = false;
     };
-  }, [revision]);
+  }, [api, revision, role]);
   const pending = inbox.filter((item) => !item.result).length;
   return (
     <div className="shell">
@@ -407,7 +413,7 @@ export function Portal() {
           <span className="dot" /> Fixture workspace
         </p>
       </aside>
-      <main>
+      <section className="legacy-content">
         <header className="page-header">
           <div>
             <p className="quiet">Rivetquay Industrial Supply</p>
@@ -434,7 +440,7 @@ export function Portal() {
         {view === 'drafts' && <Drafts onChange={refresh} />}
         {view === 'inbox' && <Inbox items={inbox} onChange={refresh} />}
         {view === 'workflows' && <Workflow history={history} onChange={refresh} />}
-      </main>
+      </section>
     </div>
   );
 }

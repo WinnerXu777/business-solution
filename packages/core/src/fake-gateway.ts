@@ -55,6 +55,10 @@ function lookup<Output>(output: Output | undefined) {
   return output === undefined ? denied('not_found') : ok(output);
 }
 
+function retryableFailure(result: ToolResult) {
+  return result.state === 'failed' && result.retryable;
+}
+
 type Options = {
   fixtures?: DemoFixtures;
   providers?: ProviderAdapters;
@@ -138,7 +142,8 @@ export class FakeGateway implements ToolGateway {
     const actionId = hash([tenantId, actor, tool, idempotencyKey]);
     const fingerprint = hash(input);
     const cached = this.calls.get(actionId);
-    if (cached?.fingerprint === fingerprint) return structuredClone(cached.result);
+    if (cached?.fingerprint === fingerprint && !retryableFailure(cached.result))
+      return structuredClone(cached.result);
 
     const occurredAt = this.now();
     const module = toolModules[tool];
@@ -152,10 +157,11 @@ export class FakeGateway implements ToolGateway {
     );
     const role = this.role(envelope);
     let result: ToolResult;
-    if (cached) {
+    if (cached && cached.fingerprint !== fingerprint) {
       result = denied('idempotency_conflict');
     } else if (
       !role ||
+      role === 'admin' ||
       (role === 'reader' && module !== 'records') ||
       (tool === 'purchase.order.approve' && role !== 'approver')
     ) {
@@ -175,7 +181,8 @@ export class FakeGateway implements ToolGateway {
     } else {
       result = await this.dispatch(request, actionId);
     }
-    if (!cached) this.calls.set(actionId, { fingerprint, result: structuredClone(result) });
+    if (!cached || cached.fingerprint === fingerprint)
+      this.calls.set(actionId, { fingerprint, result: structuredClone(result) });
     this.auditEntries.push({
       id: 'audit-' + (this.auditEntries.length + 1),
       tenantId,
@@ -458,7 +465,10 @@ export class FakeGateway implements ToolGateway {
         for (const [index, preview] of previews.entries()) {
           const result = await this.deliver(preview, actionId + '-' + index);
           if ('state' in result) {
-            if (index === 0 && result.state === 'failed') return result;
+            if (index === 0 && result.state === 'failed') {
+              if (retryableFailure(result)) approval.state = 'approved';
+              return result;
+            }
             return {
               state: 'unknown',
               actionId,

@@ -8,7 +8,7 @@ import {
   type Edge,
   type Node,
 } from '@xyflow/react';
-import { api, type WorkflowRun } from './api.ts';
+import { useAutomation, type WorkflowRun } from './api.ts';
 import { MessageCard, Notice, Panel, useTask } from './panels.tsx';
 import { resultText } from './presentation.ts';
 
@@ -51,6 +51,7 @@ const edges: Edge[] = steps.slice(1).map(({ id }, index) => ({
 }));
 
 export function Workflow({ history, onChange }: { history: WorkflowRun[]; onChange: () => void }) {
+  const api = useAutomation();
   const [nodes, setNodes, onNodesChange] = useNodesState(layout);
   const [selected, select] = useState(steps[0]);
   const task = useTask();

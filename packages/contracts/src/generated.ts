@@ -28,7 +28,7 @@ export type Approval = {
   "sourceVersion": Count;
   "policyVersion": Id;
   "expiresAt": Timestamp;
-  "state": "pending" | "approved" | "denied" | "consumed";
+  "state": "pending" | "approved" | "denied" | "consumed" | "rejected" | "expired";
 };
 export type PendingApproval = {
   "state": "pending_approval";
@@ -205,7 +205,7 @@ export type Turn = {
 export type ActorGrant = {
   "tenantId": Id;
   "actor": Actor;
-  "role": "operator" | "approver" | "reader";
+  "role": "operator" | "approver" | "reader" | "admin";
 };
 export type ChatAudioFixture = {
   "id": Id;
