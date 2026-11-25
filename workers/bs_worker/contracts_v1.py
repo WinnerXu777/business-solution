@@ -287,6 +287,39 @@ class DemoFixtures(ContractModel):
     audio: list[ChatAudioFixture]
 
 
+class Contact(ContractModel):
+    id: Id
+    customerId: Id
+    name: str
+    email: str
+    phone: str
+
+
+class Deal(ContractModel):
+    id: Id
+    customerId: Id
+    title: str
+    stage: Literal["lead", "qualified", "proposal", "won", "lost"]
+    valueCents: Count
+
+
+FraudDecision: TypeAlias = Literal["clear", "escalate"]
+
+
+class FraudReviewEntry(ContractModel):
+    orderId: Id
+    decision: FraudDecision | None
+
+
+class ConsentEntry(ContractModel):
+    channel: MessageChannel
+    state: Literal["allowed", "suppressed", "unknown"]
+    evidenceId: Id = None
+
+
+ProfileReviewStatus: TypeAlias = Literal["pending", "accepted", "rejected"]
+
+
 class ReadOrderInput(ContractModel):
     orderId: Id
 
@@ -694,10 +727,369 @@ class CompleteLlmOk(ContractModel):
 CompleteLlmResult: TypeAlias = CompleteLlmOk | PendingApproval | Denied | Failed | Unknown
 
 
-ToolName: TypeAlias = Literal["order.read", "customer.read", "invoice.read", "purchase.request.read", "purchase.order.draft", "purchase.order.approve", "collections.email.draft", "message.preview", "collections.email.send", "collections.voice.send", "collections.sms.send", "workflow.template.run", "fraud.score", "forecast.run", "profile.run", "chat.run", "llm.complete"]
+class ListOrdersInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+    customerId: Id = None
 
 
-ToolCall: TypeAlias = ReadOrderRequest | ReadCustomerRequest | ReadInvoiceRequest | ReadPurchaseRequestRequest | DraftPurchaseOrderRequest | ApprovePurchaseOrderRequest | DraftCollectionsEmailRequest | PreviewMessageRequest | SendEmailRequest | SendVoiceRequest | SendSmsRequest | RunWorkflowTemplateRequest | ScoreFraudRequest | RunForecastRequest | RunProfileRequest | RunChatRequest | CompleteLlmRequest
+class ListOrdersRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["order.list"]
+    input: ListOrdersInput
 
 
-ToolResult: TypeAlias = ReadOrderResult | ReadCustomerResult | ReadInvoiceResult | ReadPurchaseRequestResult | DraftPurchaseOrderResult | ApprovePurchaseOrderResult | DraftCollectionsEmailResult | PreviewMessageResult | SendEmailResult | SendVoiceResult | SendSmsResult | RunWorkflowTemplateResult | ScoreFraudResult | RunForecastResult | RunProfileResult | RunChatResult | CompleteLlmResult
+class ListOrdersOutput(ContractModel):
+    items: list[Order]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListOrdersOk(ContractModel):
+    state: Literal["ok"]
+    output: ListOrdersOutput
+
+
+ListOrdersResult: TypeAlias = ListOrdersOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListPurchaseRequestsInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+
+
+class ListPurchaseRequestsRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["purchase.request.list"]
+    input: ListPurchaseRequestsInput
+
+
+class ListPurchaseRequestsOutput(ContractModel):
+    items: list[PurchaseRequest]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListPurchaseRequestsOk(ContractModel):
+    state: Literal["ok"]
+    output: ListPurchaseRequestsOutput
+
+
+ListPurchaseRequestsResult: TypeAlias = ListPurchaseRequestsOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListPurchaseOrdersInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+
+
+class ListPurchaseOrdersRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["purchase.order.list"]
+    input: ListPurchaseOrdersInput
+
+
+class ListPurchaseOrdersOutput(ContractModel):
+    items: list[PurchaseOrder]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListPurchaseOrdersOk(ContractModel):
+    state: Literal["ok"]
+    output: ListPurchaseOrdersOutput
+
+
+ListPurchaseOrdersResult: TypeAlias = ListPurchaseOrdersOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListSkusInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+
+
+class ListSkusRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["inventory.list"]
+    input: ListSkusInput
+
+
+class ListSkusOutput(ContractModel):
+    items: list[Sku]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListSkusOk(ContractModel):
+    state: Literal["ok"]
+    output: ListSkusOutput
+
+
+ListSkusResult: TypeAlias = ListSkusOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListVendorsInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+
+
+class ListVendorsRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["vendor.list"]
+    input: ListVendorsInput
+
+
+class ListVendorsOutput(ContractModel):
+    items: list[Vendor]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListVendorsOk(ContractModel):
+    state: Literal["ok"]
+    output: ListVendorsOutput
+
+
+ListVendorsResult: TypeAlias = ListVendorsOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListCustomersInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+
+
+class ListCustomersRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["customer.list"]
+    input: ListCustomersInput
+
+
+class ListCustomersOutput(ContractModel):
+    items: list[Customer]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListCustomersOk(ContractModel):
+    state: Literal["ok"]
+    output: ListCustomersOutput
+
+
+ListCustomersResult: TypeAlias = ListCustomersOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListContactsInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+    customerId: Id = None
+
+
+class ListContactsRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["contact.list"]
+    input: ListContactsInput
+
+
+class ListContactsOutput(ContractModel):
+    items: list[Contact]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListContactsOk(ContractModel):
+    state: Literal["ok"]
+    output: ListContactsOutput
+
+
+ListContactsResult: TypeAlias = ListContactsOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListInvoicesInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+    customerId: Id = None
+
+
+class ListInvoicesRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["invoice.list"]
+    input: ListInvoicesInput
+
+
+class ListInvoicesOutput(ContractModel):
+    items: list[Invoice]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListInvoicesOk(ContractModel):
+    state: Literal["ok"]
+    output: ListInvoicesOutput
+
+
+ListInvoicesResult: TypeAlias = ListInvoicesOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListDealsInput(ContractModel):
+    cursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] = None
+    limit: Annotated[int, Field(ge=1, le=100)] = None
+    query: Annotated[str, Field(pattern="^[^\\r\\n]{1,128}$")] = None
+
+
+class ListDealsRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["deal.list"]
+    input: ListDealsInput
+
+
+class ListDealsOutput(ContractModel):
+    items: list[Deal]
+    nextCursor: Annotated[str, Field(pattern="^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$")] | None
+
+
+class ListDealsOk(ContractModel):
+    state: Literal["ok"]
+    output: ListDealsOutput
+
+
+ListDealsResult: TypeAlias = ListDealsOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListPurchaseDraftsInput(ContractModel):
+    pass
+
+
+class ListPurchaseDraftsRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["purchase.order.drafts.list"]
+    input: ListPurchaseDraftsInput
+
+
+ListPurchaseDraftsOutput: TypeAlias = list[DraftPurchaseOrderOutput]
+
+
+class ListPurchaseDraftsOk(ContractModel):
+    state: Literal["ok"]
+    output: ListPurchaseDraftsOutput
+
+
+ListPurchaseDraftsResult: TypeAlias = ListPurchaseDraftsOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ReadCustomerConsentInput(ContractModel):
+    customerId: Id
+
+
+class ReadCustomerConsentRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["customer.consent.read"]
+    input: ReadCustomerConsentInput
+
+
+ReadCustomerConsentOutput: TypeAlias = list[ConsentEntry]
+
+
+class ReadCustomerConsentOk(ContractModel):
+    state: Literal["ok"]
+    output: ReadCustomerConsentOutput
+
+
+ReadCustomerConsentResult: TypeAlias = ReadCustomerConsentOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ListFraudQueueInput(ContractModel):
+    pass
+
+
+class ListFraudQueueRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["fraud.queue"]
+    input: ListFraudQueueInput
+
+
+ListFraudQueueOutput: TypeAlias = list[FraudReviewEntry]
+
+
+class ListFraudQueueOk(ContractModel):
+    state: Literal["ok"]
+    output: ListFraudQueueOutput
+
+
+ListFraudQueueResult: TypeAlias = ListFraudQueueOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ReviewFraudInput(ContractModel):
+    orderId: Id
+    decision: FraudDecision
+
+
+class ReviewFraudRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["fraud.review"]
+    input: ReviewFraudInput
+
+
+class ReviewFraudOutput(ContractModel):
+    pass
+
+
+class ReviewFraudOk(ContractModel):
+    state: Literal["ok"]
+    output: ReviewFraudOutput
+
+
+ReviewFraudResult: TypeAlias = ReviewFraudOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ReadProfileReviewInput(ContractModel):
+    customerId: Id
+
+
+class ReadProfileReviewRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["profile.review.read"]
+    input: ReadProfileReviewInput
+
+
+class ReadProfileReviewOutput(ContractModel):
+    reviewStatus: ProfileReviewStatus
+
+
+class ReadProfileReviewOk(ContractModel):
+    state: Literal["ok"]
+    output: ReadProfileReviewOutput
+
+
+ReadProfileReviewResult: TypeAlias = ReadProfileReviewOk | PendingApproval | Denied | Failed | Unknown
+
+
+class ReviewProfileInput(ContractModel):
+    customerId: Id
+    decision: Literal["accept", "reject"]
+
+
+class ReviewProfileRequest(ContractModel):
+    envelope: CallEnvelope
+    tool: Literal["profile.review"]
+    input: ReviewProfileInput
+
+
+class ReviewProfileOutput(ContractModel):
+    pass
+
+
+class ReviewProfileOk(ContractModel):
+    state: Literal["ok"]
+    output: ReviewProfileOutput
+
+
+ReviewProfileResult: TypeAlias = ReviewProfileOk | PendingApproval | Denied | Failed | Unknown
+
+
+ToolName: TypeAlias = Literal["order.read", "customer.read", "invoice.read", "purchase.request.read", "purchase.order.draft", "purchase.order.approve", "collections.email.draft", "message.preview", "collections.email.send", "collections.voice.send", "collections.sms.send", "workflow.template.run", "fraud.score", "forecast.run", "profile.run", "chat.run", "llm.complete", "order.list", "purchase.request.list", "purchase.order.list", "inventory.list", "vendor.list", "customer.list", "contact.list", "invoice.list", "deal.list", "purchase.order.drafts.list", "customer.consent.read", "fraud.queue", "fraud.review", "profile.review.read", "profile.review"]
+
+
+ToolCall: TypeAlias = ReadOrderRequest | ReadCustomerRequest | ReadInvoiceRequest | ReadPurchaseRequestRequest | DraftPurchaseOrderRequest | ApprovePurchaseOrderRequest | DraftCollectionsEmailRequest | PreviewMessageRequest | SendEmailRequest | SendVoiceRequest | SendSmsRequest | RunWorkflowTemplateRequest | ScoreFraudRequest | RunForecastRequest | RunProfileRequest | RunChatRequest | CompleteLlmRequest | ListOrdersRequest | ListPurchaseRequestsRequest | ListPurchaseOrdersRequest | ListSkusRequest | ListVendorsRequest | ListCustomersRequest | ListContactsRequest | ListInvoicesRequest | ListDealsRequest | ListPurchaseDraftsRequest | ReadCustomerConsentRequest | ListFraudQueueRequest | ReviewFraudRequest | ReadProfileReviewRequest | ReviewProfileRequest
+
+
+ToolResult: TypeAlias = ReadOrderResult | ReadCustomerResult | ReadInvoiceResult | ReadPurchaseRequestResult | DraftPurchaseOrderResult | ApprovePurchaseOrderResult | DraftCollectionsEmailResult | PreviewMessageResult | SendEmailResult | SendVoiceResult | SendSmsResult | RunWorkflowTemplateResult | ScoreFraudResult | RunForecastResult | RunProfileResult | RunChatResult | CompleteLlmResult | ListOrdersResult | ListPurchaseRequestsResult | ListPurchaseOrdersResult | ListSkusResult | ListVendorsResult | ListCustomersResult | ListContactsResult | ListInvoicesResult | ListDealsResult | ListPurchaseDraftsResult | ReadCustomerConsentResult | ListFraudQueueResult | ReviewFraudResult | ReadProfileReviewResult | ReviewProfileResult

@@ -1117,6 +1117,127 @@
         "audio"
       ]
     },
+    "Contact": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        },
+        "name": {
+          "type": "string"
+        },
+        "email": {
+          "type": "string"
+        },
+        "phone": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "customerId",
+        "name",
+        "email",
+        "phone"
+      ]
+    },
+    "Deal": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/Id"
+        },
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        },
+        "title": {
+          "type": "string"
+        },
+        "stage": {
+          "enum": [
+            "lead",
+            "qualified",
+            "proposal",
+            "won",
+            "lost"
+          ]
+        },
+        "valueCents": {
+          "$ref": "#/$defs/Count"
+        }
+      },
+      "required": [
+        "id",
+        "customerId",
+        "title",
+        "stage",
+        "valueCents"
+      ]
+    },
+    "FraudDecision": {
+      "enum": [
+        "clear",
+        "escalate"
+      ]
+    },
+    "FraudReviewEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "$ref": "#/$defs/Id"
+        },
+        "decision": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FraudDecision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "orderId",
+        "decision"
+      ]
+    },
+    "ConsentEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "channel": {
+          "$ref": "#/$defs/MessageChannel"
+        },
+        "state": {
+          "enum": [
+            "allowed",
+            "suppressed",
+            "unknown"
+          ]
+        },
+        "evidenceId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "channel",
+        "state"
+      ]
+    },
+    "ProfileReviewStatus": {
+      "enum": [
+        "pending",
+        "accepted",
+        "rejected"
+      ]
+    },
     "ReadOrderInput": {
       "type": "object",
       "additionalProperties": false,
@@ -2676,6 +2797,1436 @@
         }
       ]
     },
+    "ListOrdersInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        },
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": []
+    },
+    "ListOrdersRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "order.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListOrdersInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListOrdersOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Order"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListOrdersOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListOrdersOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListOrdersResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListOrdersOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListPurchaseRequestsInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "ListPurchaseRequestsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "purchase.request.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListPurchaseRequestsInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListPurchaseRequestsOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PurchaseRequest"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListPurchaseRequestsOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListPurchaseRequestsOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListPurchaseRequestsResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListPurchaseRequestsOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListPurchaseOrdersInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "ListPurchaseOrdersRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "purchase.order.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListPurchaseOrdersInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListPurchaseOrdersOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PurchaseOrder"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListPurchaseOrdersOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListPurchaseOrdersOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListPurchaseOrdersResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListPurchaseOrdersOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListSkusInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "ListSkusRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "inventory.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListSkusInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListSkusOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Sku"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListSkusOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListSkusOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListSkusResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListSkusOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListVendorsInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "ListVendorsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "vendor.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListVendorsInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListVendorsOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Vendor"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListVendorsOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListVendorsOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListVendorsResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListVendorsOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListCustomersInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "ListCustomersRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "customer.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListCustomersInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListCustomersOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Customer"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListCustomersOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListCustomersOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListCustomersResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListCustomersOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListContactsInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        },
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": []
+    },
+    "ListContactsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "contact.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListContactsInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListContactsOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Contact"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListContactsOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListContactsOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListContactsResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListContactsOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListInvoicesInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        },
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": []
+    },
+    "ListInvoicesRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "invoice.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListInvoicesInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListInvoicesOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Invoice"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListInvoicesOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListInvoicesOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListInvoicesResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListInvoicesOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListDealsInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "ListDealsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "deal.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListDealsInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListDealsOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Deal"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": [
+        "items",
+        "nextCursor"
+      ]
+    },
+    "ListDealsOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListDealsOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListDealsResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListDealsOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListPurchaseDraftsInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "ListPurchaseDraftsRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "purchase.order.drafts.list"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListPurchaseDraftsInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListPurchaseDraftsOutput": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DraftPurchaseOrderOutput"
+      }
+    },
+    "ListPurchaseDraftsOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListPurchaseDraftsOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListPurchaseDraftsResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListPurchaseDraftsOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ReadCustomerConsentInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "customerId"
+      ]
+    },
+    "ReadCustomerConsentRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "customer.consent.read"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ReadCustomerConsentInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ReadCustomerConsentOutput": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ConsentEntry"
+      }
+    },
+    "ReadCustomerConsentOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ReadCustomerConsentOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ReadCustomerConsentResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReadCustomerConsentOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ListFraudQueueInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "ListFraudQueueRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "fraud.queue"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ListFraudQueueInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ListFraudQueueOutput": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FraudReviewEntry"
+      }
+    },
+    "ListFraudQueueOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ListFraudQueueOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ListFraudQueueResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ListFraudQueueOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ReviewFraudInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "$ref": "#/$defs/Id"
+        },
+        "decision": {
+          "$ref": "#/$defs/FraudDecision"
+        }
+      },
+      "required": [
+        "orderId",
+        "decision"
+      ]
+    },
+    "ReviewFraudRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "fraud.review"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ReviewFraudInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ReviewFraudOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "ReviewFraudOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ReviewFraudOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ReviewFraudResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReviewFraudOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ReadProfileReviewInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": [
+        "customerId"
+      ]
+    },
+    "ReadProfileReviewRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "profile.review.read"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ReadProfileReviewInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ReadProfileReviewOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reviewStatus": {
+          "$ref": "#/$defs/ProfileReviewStatus"
+        }
+      },
+      "required": [
+        "reviewStatus"
+      ]
+    },
+    "ReadProfileReviewOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ReadProfileReviewOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ReadProfileReviewResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReadProfileReviewOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
+    "ReviewProfileInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        },
+        "decision": {
+          "enum": [
+            "accept",
+            "reject"
+          ]
+        }
+      },
+      "required": [
+        "customerId",
+        "decision"
+      ]
+    },
+    "ReviewProfileRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "envelope": {
+          "$ref": "#/$defs/CallEnvelope"
+        },
+        "tool": {
+          "enum": [
+            "profile.review"
+          ]
+        },
+        "input": {
+          "$ref": "#/$defs/ReviewProfileInput"
+        }
+      },
+      "required": [
+        "envelope",
+        "tool",
+        "input"
+      ]
+    },
+    "ReviewProfileOutput": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "ReviewProfileOk": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "state": {
+          "enum": [
+            "ok"
+          ]
+        },
+        "output": {
+          "$ref": "#/$defs/ReviewProfileOutput"
+        }
+      },
+      "required": [
+        "state",
+        "output"
+      ]
+    },
+    "ReviewProfileResult": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ReviewProfileOk"
+        },
+        {
+          "$ref": "#/$defs/PendingApproval"
+        },
+        {
+          "$ref": "#/$defs/Denied"
+        },
+        {
+          "$ref": "#/$defs/Failed"
+        },
+        {
+          "$ref": "#/$defs/Unknown"
+        }
+      ]
+    },
     "ToolName": {
       "enum": [
         "order.read",
@@ -2694,7 +4245,22 @@
         "forecast.run",
         "profile.run",
         "chat.run",
-        "llm.complete"
+        "llm.complete",
+        "order.list",
+        "purchase.request.list",
+        "purchase.order.list",
+        "inventory.list",
+        "vendor.list",
+        "customer.list",
+        "contact.list",
+        "invoice.list",
+        "deal.list",
+        "purchase.order.drafts.list",
+        "customer.consent.read",
+        "fraud.queue",
+        "fraud.review",
+        "profile.review.read",
+        "profile.review"
       ]
     },
     "ToolCall": {
@@ -2749,6 +4315,51 @@
         },
         {
           "$ref": "#/$defs/CompleteLlmRequest"
+        },
+        {
+          "$ref": "#/$defs/ListOrdersRequest"
+        },
+        {
+          "$ref": "#/$defs/ListPurchaseRequestsRequest"
+        },
+        {
+          "$ref": "#/$defs/ListPurchaseOrdersRequest"
+        },
+        {
+          "$ref": "#/$defs/ListSkusRequest"
+        },
+        {
+          "$ref": "#/$defs/ListVendorsRequest"
+        },
+        {
+          "$ref": "#/$defs/ListCustomersRequest"
+        },
+        {
+          "$ref": "#/$defs/ListContactsRequest"
+        },
+        {
+          "$ref": "#/$defs/ListInvoicesRequest"
+        },
+        {
+          "$ref": "#/$defs/ListDealsRequest"
+        },
+        {
+          "$ref": "#/$defs/ListPurchaseDraftsRequest"
+        },
+        {
+          "$ref": "#/$defs/ReadCustomerConsentRequest"
+        },
+        {
+          "$ref": "#/$defs/ListFraudQueueRequest"
+        },
+        {
+          "$ref": "#/$defs/ReviewFraudRequest"
+        },
+        {
+          "$ref": "#/$defs/ReadProfileReviewRequest"
+        },
+        {
+          "$ref": "#/$defs/ReviewProfileRequest"
         }
       ]
     },
@@ -2804,6 +4415,51 @@
         },
         {
           "$ref": "#/$defs/CompleteLlmResult"
+        },
+        {
+          "$ref": "#/$defs/ListOrdersResult"
+        },
+        {
+          "$ref": "#/$defs/ListPurchaseRequestsResult"
+        },
+        {
+          "$ref": "#/$defs/ListPurchaseOrdersResult"
+        },
+        {
+          "$ref": "#/$defs/ListSkusResult"
+        },
+        {
+          "$ref": "#/$defs/ListVendorsResult"
+        },
+        {
+          "$ref": "#/$defs/ListCustomersResult"
+        },
+        {
+          "$ref": "#/$defs/ListContactsResult"
+        },
+        {
+          "$ref": "#/$defs/ListInvoicesResult"
+        },
+        {
+          "$ref": "#/$defs/ListDealsResult"
+        },
+        {
+          "$ref": "#/$defs/ListPurchaseDraftsResult"
+        },
+        {
+          "$ref": "#/$defs/ReadCustomerConsentResult"
+        },
+        {
+          "$ref": "#/$defs/ListFraudQueueResult"
+        },
+        {
+          "$ref": "#/$defs/ReviewFraudResult"
+        },
+        {
+          "$ref": "#/$defs/ReadProfileReviewResult"
+        },
+        {
+          "$ref": "#/$defs/ReviewProfileResult"
         }
       ]
     }

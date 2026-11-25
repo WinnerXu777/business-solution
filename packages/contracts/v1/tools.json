@@ -280,5 +280,558 @@
       },
       "required": ["text", "model", "route", "inputTokens", "outputTokens"]
     }
+  },
+  "order.list": {
+    "name": "ListOrders",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        },
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Order"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "purchase.request.list": {
+    "name": "ListPurchaseRequests",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PurchaseRequest"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "purchase.order.list": {
+    "name": "ListPurchaseOrders",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/PurchaseOrder"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "inventory.list": {
+    "name": "ListSkus",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Sku"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "vendor.list": {
+    "name": "ListVendors",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Vendor"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "customer.list": {
+    "name": "ListCustomers",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Customer"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "contact.list": {
+    "name": "ListContacts",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        },
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Contact"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "invoice.list": {
+    "name": "ListInvoices",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        },
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Invoice"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "deal.list": {
+    "name": "ListDeals",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "cursor": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100
+        },
+        "query": {
+          "type": "string",
+          "pattern": "^[^\\r\\n]{1,128}$"
+        }
+      },
+      "required": []
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Deal"
+          }
+        },
+        "nextCursor": {
+          "anyOf": [
+            {
+              "type": "string",
+              "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["items", "nextCursor"]
+    }
+  },
+  "purchase.order.drafts.list": {
+    "name": "ListPurchaseDrafts",
+    "module": "procurement",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "output": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/DraftPurchaseOrderOutput"
+      }
+    }
+  },
+  "customer.consent.read": {
+    "name": "ReadCustomerConsent",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["customerId"]
+    },
+    "output": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/ConsentEntry"
+      }
+    }
+  },
+  "fraud.queue": {
+    "name": "ListFraudQueue",
+    "module": "insights",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {},
+      "required": []
+    },
+    "output": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/FraudReviewEntry"
+      }
+    }
+  },
+  "fraud.review": {
+    "name": "ReviewFraud",
+    "module": "insights",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "orderId": {
+          "$ref": "#/$defs/Id"
+        },
+        "decision": {
+          "$ref": "#/$defs/FraudDecision"
+        }
+      },
+      "required": ["orderId", "decision"]
+    },
+    "output": { "type": "object", "additionalProperties": false, "properties": {}, "required": [] }
+  },
+  "profile.review.read": {
+    "name": "ReadProfileReview",
+    "module": "insights",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        }
+      },
+      "required": ["customerId"]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "reviewStatus": {
+          "$ref": "#/$defs/ProfileReviewStatus"
+        }
+      },
+      "required": ["reviewStatus"]
+    }
+  },
+  "profile.review": {
+    "name": "ReviewProfile",
+    "module": "insights",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "customerId": {
+          "$ref": "#/$defs/Id"
+        },
+        "decision": {
+          "enum": ["accept", "reject"]
+        }
+      },
+      "required": ["customerId", "decision"]
+    },
+    "output": { "type": "object", "additionalProperties": false, "properties": {}, "required": [] }
   }
 }

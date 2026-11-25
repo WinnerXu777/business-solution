@@ -105,6 +105,12 @@ test('a tenant LLM binding routes chat dispatch and keeps a committed completion
     route: 'native',
   });
   assert.equal(chat.state, 'ok');
+  const legacyAudit = await request<{ providerId: string }[]>(
+    'GET',
+    '/automation/llm/audit',
+    'operator',
+  );
+  assert.equal(legacyAudit.at(-1)?.providerId, 'openai');
   const input = {
     model: 'fixture-chat',
     turns: [{ role: 'user', content: 'synthetic turn' }],

@@ -6,6 +6,13 @@ const target =
 export default defineConfig({
   esbuild: { jsx: 'automatic' },
   server: {
-    proxy: { '/platform/v1': target, '/automation': target, '/v1': target, '/mcp': target },
+    proxy: {
+      '/platform/v1': target,
+      '/automation': target,
+      '/v1': target,
+      '/mcp': target,
+      '/connectors': target,
+      '/llm': target,
+    },
   },
 });

@@ -499,5 +499,91 @@
       "entitlements",
       "audio"
     ]
+  },
+  "Contact": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "customerId": {
+        "$ref": "#/$defs/Id"
+      },
+      "name": {
+        "type": "string"
+      },
+      "email": {
+        "type": "string"
+      },
+      "phone": {
+        "type": "string"
+      }
+    },
+    "required": ["id", "customerId", "name", "email", "phone"]
+  },
+  "Deal": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": {
+        "$ref": "#/$defs/Id"
+      },
+      "customerId": {
+        "$ref": "#/$defs/Id"
+      },
+      "title": {
+        "type": "string"
+      },
+      "stage": {
+        "enum": ["lead", "qualified", "proposal", "won", "lost"]
+      },
+      "valueCents": {
+        "$ref": "#/$defs/Count"
+      }
+    },
+    "required": ["id", "customerId", "title", "stage", "valueCents"]
+  },
+  "FraudDecision": {
+    "enum": ["clear", "escalate"]
+  },
+  "FraudReviewEntry": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "orderId": {
+        "$ref": "#/$defs/Id"
+      },
+      "decision": {
+        "anyOf": [
+          {
+            "$ref": "#/$defs/FraudDecision"
+          },
+          {
+            "type": "null"
+          }
+        ]
+      }
+    },
+    "required": ["orderId", "decision"]
+  },
+  "ConsentEntry": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "channel": {
+        "$ref": "#/$defs/MessageChannel"
+      },
+      "state": {
+        "enum": ["allowed", "suppressed", "unknown"]
+      },
+      "evidenceId": {
+        "$ref": "#/$defs/Id"
+      }
+    },
+    "required": ["channel", "state"]
+  },
+  "ProfileReviewStatus": {
+    "enum": ["pending", "accepted", "rejected"]
   }
 }

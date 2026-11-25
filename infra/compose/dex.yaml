@@ -1,0 +1,35 @@
+issuer: http://localhost:5556/dex
+storage:
+  type: memory
+web:
+  http: 0.0.0.0:5556
+oauth2:
+  skipApprovalScreen: true
+staticClients:
+  - id: rivetquay-dev
+    name: Rivetquay demo
+    secret: synthetic-dex-client-secret
+    redirectURIs:
+      - http://localhost:5173/oidc/callback
+enablePasswordDB: true
+staticPasswords:
+  - email: admin@rivetquay.example
+    hash: &demoPassword '$2b$12$RVTqOfficialDemoSalt..W6i0YAwzaLaLTKNkv2s8EXaxkqFtPgy'
+    username: Rivetquay admin
+    userID: '00000000-0000-4000-8000-000000000001'
+  - email: operator@rivetquay.example
+    hash: *demoPassword
+    username: Rivetquay operator
+    userID: '00000000-0000-4000-8000-000000000002'
+  - email: approver@rivetquay.example
+    hash: *demoPassword
+    username: Rivetquay approver
+    userID: '00000000-0000-4000-8000-000000000003'
+  - email: reader@rivetquay.example
+    hash: *demoPassword
+    username: Rivetquay reader
+    userID: '00000000-0000-4000-8000-000000000004'
+  - email: operator@spoolharbour.example
+    hash: *demoPassword
+    username: Spoolharbour operator
+    userID: '00000000-0000-4000-8000-000000000005'

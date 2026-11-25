@@ -27,15 +27,18 @@ export interface Reservation {
   occurredAt: string;
 }
 
-export const simulatedLlmPrices = (['openai', 'anthropic', 'amazon-bedrock'] as const).map(
-  (providerId) => ({
-    version: 'simulation-v1',
-    providerId,
-    unit: 'tokens',
-    mode: providerId === 'amazon-bedrock' ? ('premium' as const) : ('byo' as const),
-    chargeMode: 'informational' as const,
-  }),
-);
+export const simulatedLlmPrices = (
+  ['openai', 'anthropic', 'amazon-bedrock', 'cohere-vault'] as const
+).map((providerId) => ({
+  version: 'simulation-v1',
+  providerId,
+  unit: 'tokens',
+  mode:
+    providerId === 'amazon-bedrock' || providerId === 'cohere-vault'
+      ? ('premium' as const)
+      : ('byo' as const),
+  chargeMode: 'informational' as const,
+}));
 
 export function inputTokens(turns: CompleteLlmInput['turns']) {
   return turns.reduce((total, turn) => total + (turn.content.match(/\S+/g)?.length ?? 0), 0);

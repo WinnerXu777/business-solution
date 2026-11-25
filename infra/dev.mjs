@@ -7,7 +7,13 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const web = fileURLToPath(new URL('../apps/web/', import.meta.url));
 const resolveWeb = createRequire(new URL('../apps/web/package.json', import.meta.url));
 const vite = resolveWeb.resolve('vite/package.json').replace(/package\.json$/, 'bin/vite.js');
-const env = { ...process.env, BS_FIXTURE_LOGIN: '1', VITE_FIXTURE_LOGIN: '1' };
+const authMode = process.env.BS_AUTH_MODE ?? 'fixture';
+const env = {
+  ...process.env,
+  BS_FIXTURE_LOGIN: '1',
+  VITE_FIXTURE_LOGIN: '1',
+  VITE_BS_AUTH_MODE: authMode,
+};
 if (!env.DATABASE_URL && !env.BS_PLATFORM_VAULT_MASTER_KEY) {
   env.BS_PLATFORM_VAULT_MASTER_KEY = randomBytes(32).toString('base64');
 }

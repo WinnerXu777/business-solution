@@ -9,12 +9,17 @@ import {
   useAutomation,
   type WorkflowRun,
 } from './api.ts';
+import { useOidcSession } from './auth.ts';
+import { BotRuns } from './bot-runs.tsx';
+import { platformFetch } from './platform-http.ts';
 import { Notice } from './panels.tsx';
 import { BrowserVoice, Chat, Portal } from './portal.tsx';
 import { Workflow } from './workflow.tsx';
 
 const baseUrl = import.meta.env.VITE_API_BASE_URL ?? '';
-const fixtureLogin = import.meta.env.DEV && import.meta.env.VITE_FIXTURE_LOGIN === '1';
+const oidcLogin = import.meta.env.VITE_BS_AUTH_MODE === 'oidc';
+const fixtureLogin =
+  !oidcLogin && import.meta.env.DEV && import.meta.env.VITE_FIXTURE_LOGIN === '1';
 const logins = [
   ['fixture-operator', 'Rivetquay operator'],
   ['fixture-admin', 'Rivetquay admin'],
@@ -74,7 +79,8 @@ const routes: readonly PlatformRoute[] = [
       </div>
     ),
   },
-  { path: '/workflows', title: 'Workflows', component: WorkflowPage },
+  { path: '/legacy-workflows', title: 'Milestone 1 workflows', component: WorkflowPage },
+  { path: '/bot-runs', title: 'Bot runs and approvals', navLabel: 'Bot runs', component: BotRuns },
   {
     path: '/legacy',
     title: 'Milestone 1 portal',
@@ -88,14 +94,47 @@ const routes: readonly PlatformRoute[] = [
 ];
 
 function App() {
-  const [token, setToken] = useState(fixtureLogin ? logins[0][0] : '');
+  const [fixtureToken, setToken] = useState(fixtureLogin ? logins[0][0] : '');
   const [entered, setEntered] = useState('');
-  const client = useMemo(() => new HttpPlatformClient({ baseUrl, token }), [token]);
+  const [tenant, setTenant] = useState('tenant-rivetquay');
+  const oidc = useOidcSession(baseUrl, oidcLogin);
+  const token = oidcLogin ? (oidc.token ?? '') : fixtureToken;
+  const client = useMemo(
+    () => new HttpPlatformClient({ baseUrl, token, fetch: platformFetch }),
+    [token],
+  );
   const automation = useMemo(() => createAutomationClient(baseUrl, token), [token]);
   return (
     <>
       <div className="fixture-session">
-        {fixtureLogin ? (
+        {oidcLogin ? (
+          <>
+            {oidc.error && <p role="alert">{oidc.error}</p>}
+            {token ? (
+              <button type="button" onClick={() => void oidc.signOut()}>
+                Sign out
+              </button>
+            ) : (
+              <form
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void oidc.signIn(tenant);
+                }}
+              >
+                <label>
+                  Workspace
+                  <select value={tenant} onChange={(event) => setTenant(event.target.value)}>
+                    <option value="tenant-rivetquay">Rivetquay</option>
+                    <option value="tenant-spoolharbour">Spoolharbour</option>
+                  </select>
+                </label>
+                <button type="submit" disabled={oidc.busy}>
+                  Sign in with Dex
+                </button>
+              </form>
+            )}
+          </>
+        ) : fixtureLogin ? (
           <label>
             Fixture identity
             <select value={token} onChange={(event) => setToken(event.target.value)}>

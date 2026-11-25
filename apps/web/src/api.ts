@@ -1,4 +1,5 @@
 import { createContext, useContext } from 'react';
+import type { BotRun } from '@bs/ui';
 import type {
   Approval,
   LlmRoute,
@@ -46,6 +47,9 @@ export function createAutomationClient(baseUrl: string, token: string) {
   }
 
   return {
+    botRuns: () => request<BotRun[]>('/bots/runs'),
+    botApprovals: () =>
+      request<{ runId: string; pending: NonNullable<BotRun['pending']> }[]>('/bots/approvals'),
     order: (orderId: string) => request<ReadOrderResult>('/orders/' + encodeURIComponent(orderId)),
     chat: (sessionId: string, prompt: string, route: RouteKind) =>
       request<RunChatResult>('/chat', { sessionId, prompt, route }),

@@ -7,6 +7,7 @@ import {
   type ToolResultMap,
 } from '@bs/contracts';
 import { createPlatformServices, fixtureAdmin, GovernedGateway, type ToolGateway } from '@bs/core';
+import type { PlatformServices } from '../../../packages/core/src/platform/index.ts';
 import Fastify, { type FastifyRequest } from 'fastify';
 import pg from 'pg';
 import { createFixtureRouter } from '../../../packages/adapters/src/llm/index.ts';
@@ -15,10 +16,18 @@ import { sendToMailpit } from '../../../packages/adapters/src/messaging/mailpit.
 import { createFixtureScoringAdapter } from '../../../packages/adapters/src/scoring/index.ts';
 import { PostgresGovernanceStore } from '../../../packages/core/src/governance/store.ts';
 import { registerAutomation } from './automation/index.ts';
+import { configureAuth, type HostAuth } from './auth-bootstrap.ts';
+import { fixtureConnectors } from './connector-bootstrap.ts';
+import { connectorsPlugin, type ConnectorPluginOptions } from './connectors/index.ts';
 import { governanceRoutes, type VerifiedIdentity } from './governance/index.ts';
 import { bearerToken } from './governance/identity.ts';
 import { insightTools, registerInsightsRoutes } from './insights/routes.ts';
-import { createPlatformFixtureIdentityVerifier, platformRoutes } from './platform/index.ts';
+import { platformRoutes } from './platform/index.ts';
+import {
+  createPlatformFixtureIdentityVerifier,
+  createPlatformSessionIdentityVerifier,
+} from './platform/identity.ts';
+import { llmPlugin, type LlmPluginOptions } from './llm/index.ts';
 import { platformPostgres } from './platform/postgres.ts';
 import { connectPlatformGateway } from './platform-bootstrap.ts';
 import { simulatedLlmPrices } from '../../../packages/core/src/governance/billing.ts';
@@ -63,7 +72,14 @@ function fixtureBearerBindings(env: NodeJS.ProcessEnv, { grants }: DemoFixtures)
   return bindings;
 }
 
-export function createApp(env: NodeJS.ProcessEnv = process.env) {
+interface AppOptions {
+  auth?: HostAuth;
+  connectors?: ConnectorPluginOptions;
+  fixtureConnectors?: boolean;
+  llm?: LlmPluginOptions | ((services: PlatformServices, now: () => string) => LlmPluginOptions);
+}
+
+export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOptions = {}) {
   const fixtures = loadDemoFixtures();
   const app = Fastify();
   const pool = env.DATABASE_URL ? new pg.Pool({ connectionString: env.DATABASE_URL }) : undefined;
@@ -72,19 +88,48 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
     app.addHook('onClose', () => pool.end());
   }
   const store = pool ? new PostgresGovernanceStore(pool) : undefined;
-  const records = store
-    ? new PostgresRecordRepository(store)
-    : new MemoryRecordRepository(fixtures);
   const startedAt = performance.now();
   const now = pool
     ? () => new Date().toISOString()
     : () => new Date(Date.parse(fixtures.asOf) + performance.now() - startedAt).toISOString();
+  function resolveIdentity(request: FastifyRequest) {
+    const token = bearerToken(request.headers.authorization);
+    return token ? verifyIdentity(token) : undefined;
+  }
+  const connectors = options.fixtureConnectors
+    ? fixtureConnectors(() => services, resolveIdentity, now)
+    : undefined;
+  const records = store
+    ? new PostgresRecordRepository(store, connectors?.records)
+    : new MemoryRecordRepository(fixtures, connectors?.records);
+  function tenantActors(tenantId: string) {
+    return services.directory.activeVersion(tenantId) === undefined
+      ? []
+      : services.directory.members(tenantId).map(({ user }) => user.actor);
+  }
   const governed = new GovernedGateway({
     fixtures,
     records,
     store,
     now,
-    moduleOverride: (tenantId, module) => services.entitlements.override(tenantId, module),
+    identity: {
+      actors: tenantActors,
+      allows: (identity, permission) => services.directory.allows(identity, permission),
+    },
+    async entitlement(tenantId, module) {
+      const entry = (await services.entitlements.listing(tenantId, [])).find(
+        ({ moduleId }) => moduleId === module,
+      );
+      if (entry?.windowStart && entry.windowEnd)
+        return {
+          tenantId,
+          flag: { module, enabled: entry.enabled },
+          unit: 'actions',
+          allowance: entry.allowance,
+          windowStart: entry.windowStart,
+          windowEnd: entry.windowEnd,
+        };
+    },
     resolveLlmBinding: (tenantId) =>
       services.resolveBinding(tenantId, 'llm', {
         operation: 'inference',
@@ -119,23 +164,16 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
     billing: { providerPrices: simulatedLlmPrices },
     vaultMasterKey: readVaultMasterKey(env),
   });
-  const verifyIdentity = createPlatformFixtureIdentityVerifier(
-    fixtureBearerBindings(env, fixtures),
-    services.directory,
-  );
+  const auth = options.auth && configureAuth(services.directory, options.auth);
+  const verifyIdentity = auth
+    ? createPlatformSessionIdentityVerifier(auth)
+    : createPlatformFixtureIdentityVerifier(
+        fixtureBearerBindings(env, fixtures),
+        services.directory,
+      );
   const { transport: gateway, reports } = connectPlatformGateway(services, governed);
-  const resolveIdentity = (request: FastifyRequest) => {
-    const token = bearerToken(request.headers.authorization);
-    return token ? verifyIdentity(token) : undefined;
-  };
   const canReview = (identity: VerifiedIdentity) =>
-    fixtures.grants.some(
-      (grant) =>
-        grant.tenantId === identity.tenantId &&
-        grant.actor.id === identity.actor.id &&
-        grant.actor.kind === identity.actor.kind &&
-        grant.role === 'approver',
-    );
+    services.directory.allows(identity, 'approvals.decide');
 
   app.register(async (instance) => {
     instance.addHook('onRequest', (request, _reply, done) => {
@@ -151,7 +189,7 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
           else done();
         }, done);
     });
-    await instance.register(platformRoutes, { services, verifyIdentity });
+    await instance.register(platformRoutes, { services, auth, verifyIdentity });
   });
 
   app.register(governanceRoutes, {
@@ -161,6 +199,12 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
     canReview,
   });
   registerInsightsRoutes(app, { gateway, resolveIdentity });
+  const connectorOptions = options.connectors ?? connectors?.options;
+  if (connectorOptions) app.register(connectorsPlugin, connectorOptions);
+  if (options.llm) {
+    const llm = typeof options.llm === 'function' ? options.llm(services, now) : options.llm;
+    app.register(llmPlugin, llm);
+  }
 
   const automationGateway: ToolGateway = {
     async call<Request extends ToolCall>(
@@ -179,12 +223,11 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
               grant.tool === request.tool &&
               (grant.state === 'approved' || grant.state === 'consumed'),
           );
-          const requester = fixtures.grants.find(
-            (grant) =>
-              grant.tenantId === envelope.tenantId && grant.actor.id === approval?.requestedBy,
+          const requester = tenantActors(envelope.tenantId).find(
+            (actor) => actor.id === approval?.requestedBy,
           );
           if (requester) {
-            return gateway.call({ ...request, envelope: { ...envelope, actor: requester.actor } });
+            return gateway.call({ ...request, envelope: { ...envelope, actor: requester } });
           }
         }
       }
@@ -213,10 +256,9 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
           if (identity && (role === 'requester' || canReview(identity))) return identity;
         },
         async authorizeRuntime(scope, capability) {
-          const role = services.directory.resolve(scope)?.role;
           if (
-            role !== 'operator' &&
-            !(role === 'approver' && (capability === 'bot' || capability === 'workflow'))
+            !services.directory.allows(scope, 'actions.request') &&
+            !(canReview(scope) && (capability === 'bot' || capability === 'workflow'))
           ) {
             return false;
           }
@@ -224,6 +266,8 @@ export function createApp(env: NodeJS.ProcessEnv = process.env) {
           const modules = await services.entitlements.listing(scope.tenantId, []);
           return modules.some((entry) => entry.moduleId === module && entry.enabled);
         },
+        pendingApprovals: (tenantId) => gateway.listApprovals(tenantId, 'pending'),
+        approvalPreviews: (tenantId, approvalId) => governed.approvalPreviews(tenantId, approvalId),
         sign: (envelope, approvalId) => gateway.signApproval(envelope, approvalId),
       });
     },

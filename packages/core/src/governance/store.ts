@@ -13,6 +13,7 @@ import type {
 import type { PostgresExecutor } from '../../../business/src/persistence/index.ts';
 
 import type { BillingEntry, Reservation } from './billing.ts';
+import type { StoredReview } from './records.ts';
 
 export interface StoredApproval {
   grant: Approval;
@@ -65,6 +66,7 @@ interface Tables {
   outbox: OutboxJob;
   usage: UsageCounterEvent;
   billing_event: BillingEntry;
+  record_review: StoredReview;
 }
 
 const tables = [
@@ -75,6 +77,7 @@ const tables = [
   'outbox',
   'usage',
   'billing_event',
+  'record_review',
 ] as const;
 
 export interface TenantState {
@@ -92,6 +95,7 @@ function emptyState(): TenantState {
       outbox: new Map(),
       usage: new Map(),
       billing_event: new Map(),
+      record_review: new Map(),
     },
     audit: [],
   };

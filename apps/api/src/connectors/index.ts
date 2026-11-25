@@ -23,6 +23,8 @@ export interface ConnectorPluginOptions {
   webhooks: WebhookIngestor;
   /** Resolve verified identity and enforce the requested connector permission. */
   identify(request: FastifyRequest, permission: ConnectorPermission): Promise<Identity>;
+  installed?(installation: Installation): void;
+  registerFixtureUi?(app: Parameters<FastifyPluginAsync>[0]): void;
 }
 
 type ConnectionRoute = { Params: { connectionId: string } };
@@ -104,7 +106,9 @@ export const connectorsPlugin: FastifyPluginAsync<ConnectorPluginOptions> = asyn
     async (request, reply) => {
       const { tenantId } = await identify(request, 'connectors:manage');
       const { connectorId, accountId, mode } = request.body;
-      return reply.code(201).send(lifecycle.install(tenantId, connectorId, accountId, mode));
+      const installation = lifecycle.install(tenantId, connectorId, accountId, mode);
+      options.installed?.(installation);
+      return reply.code(201).send(installation);
     },
   );
 
@@ -222,6 +226,7 @@ export const connectorsPlugin: FastifyPluginAsync<ConnectorPluginOptions> = asyn
       };
     },
   );
+  options.registerFixtureUi?.(app);
 
   app.get<ConnectionRoute>('/connectors/:connectionId/dead-letters', async (request) => ({
     events: webhooks.listDeadLetters(await ref(request, 'connectors:read')),

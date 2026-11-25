@@ -3,6 +3,9 @@ import { loadDemoFixtures, type DemoFixtures } from '@bs/contracts';
 export {
   MemoryRecordRepository,
   PostgresRecordRepository,
+  type ConnectedRecords,
+  type RecordKind,
+  type RecordQuery,
   type RecordRepository,
 } from './persistence/index.ts';
 

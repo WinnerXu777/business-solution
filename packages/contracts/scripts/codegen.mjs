@@ -79,9 +79,9 @@ function assertSupported(schema) {
   if (
     schema.type === 'object' &&
     (schema.additionalProperties !== false ||
-      Object.keys(schema.properties).join() !== schema.required.join())
+      schema.required.some((key) => !Object.hasOwn(schema.properties, key)))
   ) {
-    throw new Error('Objects must be closed with all properties required');
+    throw new Error('Objects must be closed and required fields must be declared');
   }
   if (schema.$ref) refName(schema.$ref);
   if (
@@ -109,7 +109,13 @@ function typeScript(schema, level = 0) {
   if (schema.type !== 'object') return schema.type;
   const pad = '  '.repeat(level);
   const fields = Object.entries(schema.properties).map(
-    ([key, field]) => pad + '  ' + JSON.stringify(key) + ': ' + typeScript(field, level + 1) + ';',
+    ([key, field]) =>
+      pad +
+      '  ' +
+      JSON.stringify(key) +
+      (schema.required.includes(key) ? ': ' : '?: ') +
+      typeScript(field, level + 1) +
+      ';',
   );
   return ['{', ...fields, pad + '}'].join('\n');
 }
@@ -152,9 +158,15 @@ function emitPython(name, schema) {
   if (schema.type === 'object') {
     const fields = Object.entries(schema.properties).map(([key, field]) => {
       if (!/^[a-z][A-Za-z0-9]*$/.test(key)) throw new Error('Invalid Python field ' + key);
-      return '    ' + key + ': ' + pythonType(field, name + key[0].toUpperCase() + key.slice(1));
+      const type = pythonType(field, name + key[0].toUpperCase() + key.slice(1));
+      return '    ' + key + ': ' + type + (schema.required.includes(key) ? '' : ' = None');
     });
-    py.push('', '', 'class ' + name + '(ContractModel):', ...fields);
+    py.push(
+      '',
+      '',
+      'class ' + name + '(ContractModel):',
+      ...(fields.length ? fields : ['    pass']),
+    );
   } else {
     const type = pythonType(schema, name);
     py.push('', '', name + ': TypeAlias = ' + type);

@@ -231,6 +231,31 @@ export type DemoFixtures = {
   "entitlements": Array<Entitlement>;
   "audio": Array<ChatAudioFixture>;
 };
+export type Contact = {
+  "id": Id;
+  "customerId": Id;
+  "name": string;
+  "email": string;
+  "phone": string;
+};
+export type Deal = {
+  "id": Id;
+  "customerId": Id;
+  "title": string;
+  "stage": "lead" | "qualified" | "proposal" | "won" | "lost";
+  "valueCents": Count;
+};
+export type FraudDecision = "clear" | "escalate";
+export type FraudReviewEntry = {
+  "orderId": Id;
+  "decision": FraudDecision | null;
+};
+export type ConsentEntry = {
+  "channel": MessageChannel;
+  "state": "allowed" | "suppressed" | "unknown";
+  "evidenceId"?: Id;
+};
+export type ProfileReviewStatus = "pending" | "accepted" | "rejected";
 export type ReadOrderInput = {
   "orderId": Id;
 };
@@ -519,9 +544,271 @@ export type CompleteLlmOk = {
   "output": CompleteLlmOutput;
 };
 export type CompleteLlmResult = CompleteLlmOk | PendingApproval | Denied | Failed | Unknown;
-export type ToolName = "order.read" | "customer.read" | "invoice.read" | "purchase.request.read" | "purchase.order.draft" | "purchase.order.approve" | "collections.email.draft" | "message.preview" | "collections.email.send" | "collections.voice.send" | "collections.sms.send" | "workflow.template.run" | "fraud.score" | "forecast.run" | "profile.run" | "chat.run" | "llm.complete";
-export type ToolCall = ReadOrderRequest | ReadCustomerRequest | ReadInvoiceRequest | ReadPurchaseRequestRequest | DraftPurchaseOrderRequest | ApprovePurchaseOrderRequest | DraftCollectionsEmailRequest | PreviewMessageRequest | SendEmailRequest | SendVoiceRequest | SendSmsRequest | RunWorkflowTemplateRequest | ScoreFraudRequest | RunForecastRequest | RunProfileRequest | RunChatRequest | CompleteLlmRequest;
-export type ToolResult = ReadOrderResult | ReadCustomerResult | ReadInvoiceResult | ReadPurchaseRequestResult | DraftPurchaseOrderResult | ApprovePurchaseOrderResult | DraftCollectionsEmailResult | PreviewMessageResult | SendEmailResult | SendVoiceResult | SendSmsResult | RunWorkflowTemplateResult | ScoreFraudResult | RunForecastResult | RunProfileResult | RunChatResult | CompleteLlmResult;
+export type ListOrdersInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+  "customerId"?: Id;
+};
+export type ListOrdersRequest = {
+  "envelope": CallEnvelope;
+  "tool": "order.list";
+  "input": ListOrdersInput;
+};
+export type ListOrdersOutput = {
+  "items": Array<Order>;
+  "nextCursor": string | null;
+};
+export type ListOrdersOk = {
+  "state": "ok";
+  "output": ListOrdersOutput;
+};
+export type ListOrdersResult = ListOrdersOk | PendingApproval | Denied | Failed | Unknown;
+export type ListPurchaseRequestsInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+};
+export type ListPurchaseRequestsRequest = {
+  "envelope": CallEnvelope;
+  "tool": "purchase.request.list";
+  "input": ListPurchaseRequestsInput;
+};
+export type ListPurchaseRequestsOutput = {
+  "items": Array<PurchaseRequest>;
+  "nextCursor": string | null;
+};
+export type ListPurchaseRequestsOk = {
+  "state": "ok";
+  "output": ListPurchaseRequestsOutput;
+};
+export type ListPurchaseRequestsResult = ListPurchaseRequestsOk | PendingApproval | Denied | Failed | Unknown;
+export type ListPurchaseOrdersInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+};
+export type ListPurchaseOrdersRequest = {
+  "envelope": CallEnvelope;
+  "tool": "purchase.order.list";
+  "input": ListPurchaseOrdersInput;
+};
+export type ListPurchaseOrdersOutput = {
+  "items": Array<PurchaseOrder>;
+  "nextCursor": string | null;
+};
+export type ListPurchaseOrdersOk = {
+  "state": "ok";
+  "output": ListPurchaseOrdersOutput;
+};
+export type ListPurchaseOrdersResult = ListPurchaseOrdersOk | PendingApproval | Denied | Failed | Unknown;
+export type ListSkusInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+};
+export type ListSkusRequest = {
+  "envelope": CallEnvelope;
+  "tool": "inventory.list";
+  "input": ListSkusInput;
+};
+export type ListSkusOutput = {
+  "items": Array<Sku>;
+  "nextCursor": string | null;
+};
+export type ListSkusOk = {
+  "state": "ok";
+  "output": ListSkusOutput;
+};
+export type ListSkusResult = ListSkusOk | PendingApproval | Denied | Failed | Unknown;
+export type ListVendorsInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+};
+export type ListVendorsRequest = {
+  "envelope": CallEnvelope;
+  "tool": "vendor.list";
+  "input": ListVendorsInput;
+};
+export type ListVendorsOutput = {
+  "items": Array<Vendor>;
+  "nextCursor": string | null;
+};
+export type ListVendorsOk = {
+  "state": "ok";
+  "output": ListVendorsOutput;
+};
+export type ListVendorsResult = ListVendorsOk | PendingApproval | Denied | Failed | Unknown;
+export type ListCustomersInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+};
+export type ListCustomersRequest = {
+  "envelope": CallEnvelope;
+  "tool": "customer.list";
+  "input": ListCustomersInput;
+};
+export type ListCustomersOutput = {
+  "items": Array<Customer>;
+  "nextCursor": string | null;
+};
+export type ListCustomersOk = {
+  "state": "ok";
+  "output": ListCustomersOutput;
+};
+export type ListCustomersResult = ListCustomersOk | PendingApproval | Denied | Failed | Unknown;
+export type ListContactsInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+  "customerId"?: Id;
+};
+export type ListContactsRequest = {
+  "envelope": CallEnvelope;
+  "tool": "contact.list";
+  "input": ListContactsInput;
+};
+export type ListContactsOutput = {
+  "items": Array<Contact>;
+  "nextCursor": string | null;
+};
+export type ListContactsOk = {
+  "state": "ok";
+  "output": ListContactsOutput;
+};
+export type ListContactsResult = ListContactsOk | PendingApproval | Denied | Failed | Unknown;
+export type ListInvoicesInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+  "customerId"?: Id;
+};
+export type ListInvoicesRequest = {
+  "envelope": CallEnvelope;
+  "tool": "invoice.list";
+  "input": ListInvoicesInput;
+};
+export type ListInvoicesOutput = {
+  "items": Array<Invoice>;
+  "nextCursor": string | null;
+};
+export type ListInvoicesOk = {
+  "state": "ok";
+  "output": ListInvoicesOutput;
+};
+export type ListInvoicesResult = ListInvoicesOk | PendingApproval | Denied | Failed | Unknown;
+export type ListDealsInput = {
+  "cursor"?: string;
+  "limit"?: number;
+  "query"?: string;
+};
+export type ListDealsRequest = {
+  "envelope": CallEnvelope;
+  "tool": "deal.list";
+  "input": ListDealsInput;
+};
+export type ListDealsOutput = {
+  "items": Array<Deal>;
+  "nextCursor": string | null;
+};
+export type ListDealsOk = {
+  "state": "ok";
+  "output": ListDealsOutput;
+};
+export type ListDealsResult = ListDealsOk | PendingApproval | Denied | Failed | Unknown;
+export type ListPurchaseDraftsInput = {
+};
+export type ListPurchaseDraftsRequest = {
+  "envelope": CallEnvelope;
+  "tool": "purchase.order.drafts.list";
+  "input": ListPurchaseDraftsInput;
+};
+export type ListPurchaseDraftsOutput = Array<DraftPurchaseOrderOutput>;
+export type ListPurchaseDraftsOk = {
+  "state": "ok";
+  "output": ListPurchaseDraftsOutput;
+};
+export type ListPurchaseDraftsResult = ListPurchaseDraftsOk | PendingApproval | Denied | Failed | Unknown;
+export type ReadCustomerConsentInput = {
+  "customerId": Id;
+};
+export type ReadCustomerConsentRequest = {
+  "envelope": CallEnvelope;
+  "tool": "customer.consent.read";
+  "input": ReadCustomerConsentInput;
+};
+export type ReadCustomerConsentOutput = Array<ConsentEntry>;
+export type ReadCustomerConsentOk = {
+  "state": "ok";
+  "output": ReadCustomerConsentOutput;
+};
+export type ReadCustomerConsentResult = ReadCustomerConsentOk | PendingApproval | Denied | Failed | Unknown;
+export type ListFraudQueueInput = {
+};
+export type ListFraudQueueRequest = {
+  "envelope": CallEnvelope;
+  "tool": "fraud.queue";
+  "input": ListFraudQueueInput;
+};
+export type ListFraudQueueOutput = Array<FraudReviewEntry>;
+export type ListFraudQueueOk = {
+  "state": "ok";
+  "output": ListFraudQueueOutput;
+};
+export type ListFraudQueueResult = ListFraudQueueOk | PendingApproval | Denied | Failed | Unknown;
+export type ReviewFraudInput = {
+  "orderId": Id;
+  "decision": FraudDecision;
+};
+export type ReviewFraudRequest = {
+  "envelope": CallEnvelope;
+  "tool": "fraud.review";
+  "input": ReviewFraudInput;
+};
+export type ReviewFraudOutput = {
+};
+export type ReviewFraudOk = {
+  "state": "ok";
+  "output": ReviewFraudOutput;
+};
+export type ReviewFraudResult = ReviewFraudOk | PendingApproval | Denied | Failed | Unknown;
+export type ReadProfileReviewInput = {
+  "customerId": Id;
+};
+export type ReadProfileReviewRequest = {
+  "envelope": CallEnvelope;
+  "tool": "profile.review.read";
+  "input": ReadProfileReviewInput;
+};
+export type ReadProfileReviewOutput = {
+  "reviewStatus": ProfileReviewStatus;
+};
+export type ReadProfileReviewOk = {
+  "state": "ok";
+  "output": ReadProfileReviewOutput;
+};
+export type ReadProfileReviewResult = ReadProfileReviewOk | PendingApproval | Denied | Failed | Unknown;
+export type ReviewProfileInput = {
+  "customerId": Id;
+  "decision": "accept" | "reject";
+};
+export type ReviewProfileRequest = {
+  "envelope": CallEnvelope;
+  "tool": "profile.review";
+  "input": ReviewProfileInput;
+};
+export type ReviewProfileOutput = {
+};
+export type ReviewProfileOk = {
+  "state": "ok";
+  "output": ReviewProfileOutput;
+};
+export type ReviewProfileResult = ReviewProfileOk | PendingApproval | Denied | Failed | Unknown;
+export type ToolName = "order.read" | "customer.read" | "invoice.read" | "purchase.request.read" | "purchase.order.draft" | "purchase.order.approve" | "collections.email.draft" | "message.preview" | "collections.email.send" | "collections.voice.send" | "collections.sms.send" | "workflow.template.run" | "fraud.score" | "forecast.run" | "profile.run" | "chat.run" | "llm.complete" | "order.list" | "purchase.request.list" | "purchase.order.list" | "inventory.list" | "vendor.list" | "customer.list" | "contact.list" | "invoice.list" | "deal.list" | "purchase.order.drafts.list" | "customer.consent.read" | "fraud.queue" | "fraud.review" | "profile.review.read" | "profile.review";
+export type ToolCall = ReadOrderRequest | ReadCustomerRequest | ReadInvoiceRequest | ReadPurchaseRequestRequest | DraftPurchaseOrderRequest | ApprovePurchaseOrderRequest | DraftCollectionsEmailRequest | PreviewMessageRequest | SendEmailRequest | SendVoiceRequest | SendSmsRequest | RunWorkflowTemplateRequest | ScoreFraudRequest | RunForecastRequest | RunProfileRequest | RunChatRequest | CompleteLlmRequest | ListOrdersRequest | ListPurchaseRequestsRequest | ListPurchaseOrdersRequest | ListSkusRequest | ListVendorsRequest | ListCustomersRequest | ListContactsRequest | ListInvoicesRequest | ListDealsRequest | ListPurchaseDraftsRequest | ReadCustomerConsentRequest | ListFraudQueueRequest | ReviewFraudRequest | ReadProfileReviewRequest | ReviewProfileRequest;
+export type ToolResult = ReadOrderResult | ReadCustomerResult | ReadInvoiceResult | ReadPurchaseRequestResult | DraftPurchaseOrderResult | ApprovePurchaseOrderResult | DraftCollectionsEmailResult | PreviewMessageResult | SendEmailResult | SendVoiceResult | SendSmsResult | RunWorkflowTemplateResult | ScoreFraudResult | RunForecastResult | RunProfileResult | RunChatResult | CompleteLlmResult | ListOrdersResult | ListPurchaseRequestsResult | ListPurchaseOrdersResult | ListSkusResult | ListVendorsResult | ListCustomersResult | ListContactsResult | ListInvoicesResult | ListDealsResult | ListPurchaseDraftsResult | ReadCustomerConsentResult | ListFraudQueueResult | ReviewFraudResult | ReadProfileReviewResult | ReviewProfileResult;
 export interface ToolInputMap {
   "order.read": ReadOrderInput;
   "customer.read": ReadCustomerInput;
@@ -540,6 +827,21 @@ export interface ToolInputMap {
   "profile.run": RunProfileInput;
   "chat.run": RunChatInput;
   "llm.complete": CompleteLlmInput;
+  "order.list": ListOrdersInput;
+  "purchase.request.list": ListPurchaseRequestsInput;
+  "purchase.order.list": ListPurchaseOrdersInput;
+  "inventory.list": ListSkusInput;
+  "vendor.list": ListVendorsInput;
+  "customer.list": ListCustomersInput;
+  "contact.list": ListContactsInput;
+  "invoice.list": ListInvoicesInput;
+  "deal.list": ListDealsInput;
+  "purchase.order.drafts.list": ListPurchaseDraftsInput;
+  "customer.consent.read": ReadCustomerConsentInput;
+  "fraud.queue": ListFraudQueueInput;
+  "fraud.review": ReviewFraudInput;
+  "profile.review.read": ReadProfileReviewInput;
+  "profile.review": ReviewProfileInput;
 }
 export interface ToolOutputMap {
   "order.read": ReadOrderOutput;
@@ -559,6 +861,21 @@ export interface ToolOutputMap {
   "profile.run": RunProfileOutput;
   "chat.run": RunChatOutput;
   "llm.complete": CompleteLlmOutput;
+  "order.list": ListOrdersOutput;
+  "purchase.request.list": ListPurchaseRequestsOutput;
+  "purchase.order.list": ListPurchaseOrdersOutput;
+  "inventory.list": ListSkusOutput;
+  "vendor.list": ListVendorsOutput;
+  "customer.list": ListCustomersOutput;
+  "contact.list": ListContactsOutput;
+  "invoice.list": ListInvoicesOutput;
+  "deal.list": ListDealsOutput;
+  "purchase.order.drafts.list": ListPurchaseDraftsOutput;
+  "customer.consent.read": ReadCustomerConsentOutput;
+  "fraud.queue": ListFraudQueueOutput;
+  "fraud.review": ReviewFraudOutput;
+  "profile.review.read": ReadProfileReviewOutput;
+  "profile.review": ReviewProfileOutput;
 }
 export interface ToolRequestMap {
   "order.read": ReadOrderRequest;
@@ -578,6 +895,21 @@ export interface ToolRequestMap {
   "profile.run": RunProfileRequest;
   "chat.run": RunChatRequest;
   "llm.complete": CompleteLlmRequest;
+  "order.list": ListOrdersRequest;
+  "purchase.request.list": ListPurchaseRequestsRequest;
+  "purchase.order.list": ListPurchaseOrdersRequest;
+  "inventory.list": ListSkusRequest;
+  "vendor.list": ListVendorsRequest;
+  "customer.list": ListCustomersRequest;
+  "contact.list": ListContactsRequest;
+  "invoice.list": ListInvoicesRequest;
+  "deal.list": ListDealsRequest;
+  "purchase.order.drafts.list": ListPurchaseDraftsRequest;
+  "customer.consent.read": ReadCustomerConsentRequest;
+  "fraud.queue": ListFraudQueueRequest;
+  "fraud.review": ReviewFraudRequest;
+  "profile.review.read": ReadProfileReviewRequest;
+  "profile.review": ReviewProfileRequest;
 }
 export interface ToolResultMap {
   "order.read": ReadOrderResult;
@@ -597,6 +929,21 @@ export interface ToolResultMap {
   "profile.run": RunProfileResult;
   "chat.run": RunChatResult;
   "llm.complete": CompleteLlmResult;
+  "order.list": ListOrdersResult;
+  "purchase.request.list": ListPurchaseRequestsResult;
+  "purchase.order.list": ListPurchaseOrdersResult;
+  "inventory.list": ListSkusResult;
+  "vendor.list": ListVendorsResult;
+  "customer.list": ListCustomersResult;
+  "contact.list": ListContactsResult;
+  "invoice.list": ListInvoicesResult;
+  "deal.list": ListDealsResult;
+  "purchase.order.drafts.list": ListPurchaseDraftsResult;
+  "customer.consent.read": ReadCustomerConsentResult;
+  "fraud.queue": ListFraudQueueResult;
+  "fraud.review": ReviewFraudResult;
+  "profile.review.read": ReadProfileReviewResult;
+  "profile.review": ReviewProfileResult;
 }
 export const toolModules = {
   "order.read": "records",
@@ -616,4 +963,19 @@ export const toolModules = {
   "profile.run": "insights",
   "chat.run": "ai",
   "llm.complete": "ai",
+  "order.list": "records",
+  "purchase.request.list": "records",
+  "purchase.order.list": "records",
+  "inventory.list": "records",
+  "vendor.list": "records",
+  "customer.list": "records",
+  "contact.list": "records",
+  "invoice.list": "records",
+  "deal.list": "records",
+  "purchase.order.drafts.list": "procurement",
+  "customer.consent.read": "records",
+  "fraud.queue": "insights",
+  "fraud.review": "insights",
+  "profile.review.read": "insights",
+  "profile.review": "insights",
 } as const satisfies Record<ToolName, ModuleId>;

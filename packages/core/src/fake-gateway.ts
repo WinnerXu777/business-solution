@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { createFakeProviders, type ProviderAdapters } from '@bs/adapters';
-import { createFixtureRecords } from '@bs/business';
+import { createFixtureRecords, MemoryRecordRepository } from '@bs/business';
 import {
   loadDemoFixtures,
   toolModules,
@@ -20,6 +20,14 @@ import {
 } from '@bs/contracts';
 import type { ToolGateway } from './index.ts';
 import { createFixtureScoringAdapter } from '../../adapters/src/scoring/fixture.ts';
+import {
+  dispatchRecordTool,
+  isReadTool,
+  reviewTools,
+  visibleDrafts,
+  type StoredReview,
+} from './governance/records.ts';
+import { unavailable } from './governance/results.ts';
 
 const policyVersion = 'fixture-policy-v1';
 const approverId = 'actor-approver';
@@ -69,6 +77,8 @@ type Options = {
 export class FakeGateway implements ToolGateway {
   private readonly fixtures;
   private readonly records;
+  private readonly catalogRecords;
+  private readonly reviews = new Map<string, StoredReview>();
   private readonly providers;
   private readonly now;
   private readonly calls = new Map<string, { fingerprint: string; result: ToolResult }>();
@@ -83,6 +93,7 @@ export class FakeGateway implements ToolGateway {
   constructor(options: Options = {}) {
     this.fixtures = structuredClone(options.fixtures ?? loadDemoFixtures());
     this.records = createFixtureRecords(this.fixtures);
+    this.catalogRecords = new MemoryRecordRepository(this.fixtures);
     const defaults = createFakeProviders();
     this.providers = options.providers ?? {
       ...defaults,
@@ -162,8 +173,8 @@ export class FakeGateway implements ToolGateway {
     } else if (
       !role ||
       role === 'admin' ||
-      (role === 'reader' && module !== 'records') ||
-      (tool === 'purchase.order.approve' && role !== 'approver')
+      (role === 'reader' && module !== 'records' && !isReadTool(tool)) ||
+      (reviewTools.has(tool) && role !== 'approver')
     ) {
       result = denied('forbidden');
     } else if (!entitlement?.flag.enabled) {
@@ -362,6 +373,10 @@ export class FakeGateway implements ToolGateway {
         return lookup(this.records.invoice(tenantId, input.invoiceId));
       case 'purchase.request.read':
         return lookup(this.records.purchaseRequest(tenantId, input.requestId));
+      case 'purchase.order.drafts.list':
+        return ok(
+          visibleDrafts(envelope, this.now(), this.approvals.values(), (id) => this.drafts.get(id)),
+        );
       case 'purchase.order.draft': {
         const record = this.records.purchaseRequest(tenantId, input.requestId);
         if (!record) return denied('not_found');
@@ -403,14 +418,17 @@ export class FakeGateway implements ToolGateway {
         ) {
           return denied('invalid_approval');
         }
-        approval.state = 'consumed';
-        this.approvedDrafts.add(draft.id);
-        return ok({
+        const order = {
           id: 'po-' + hash([tenantId, draft.id]),
           draft,
           approvalId: approval.id,
           status: 'approved' as const,
-        });
+        };
+        if (!(await this.catalogRecords.createPurchaseOrder(order)))
+          return denied('invalid_approval');
+        approval.state = 'consumed';
+        this.approvedDrafts.add(draft.id);
+        return ok(order);
       }
       case 'collections.email.draft':
         return this.preview(tenantId, input.invoiceId, 'email');
@@ -532,6 +550,15 @@ export class FakeGateway implements ToolGateway {
         return this.acceptsRoute(input.route)
           ? ok(await this.providers.llm.complete(input))
           : denied('forbidden');
+      default:
+        return (
+          (await dispatchRecordTool(
+            request,
+            this.catalogRecords,
+            this.reviews,
+            this.providers.scoring,
+          )) ?? unavailable()
+        );
     }
   }
 

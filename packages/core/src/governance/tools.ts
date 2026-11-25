@@ -22,6 +22,7 @@ import {
   unknownOutcome,
 } from './results.ts';
 import type { Effect, TenantState } from './store.ts';
+import { dispatchRecordTool, visibleDrafts } from './records.ts';
 
 export interface Execution {
   envelope: CallEnvelope;
@@ -220,6 +221,18 @@ export function createToolHandlers(
         return lookup(await records.get('invoices', tenantId, input.invoiceId));
       case 'purchase.request.read':
         return lookup(await records.get('purchaseRequests', tenantId, input.requestId));
+      case 'purchase.order.drafts.list':
+        return ok(
+          visibleDrafts(
+            envelope,
+            now,
+            [...state.rows.approval.values()].map(({ grant }) => grant),
+            (id) => {
+              const artifact = state.rows.artifact.get(id);
+              return artifact && 'requestId' in artifact ? artifact : undefined;
+            },
+          ),
+        );
       case 'purchase.order.draft': {
         const current = await purchase(tenantId, input.requestId);
         if (!current) return denied('not_found');
@@ -319,6 +332,15 @@ export function createToolHandlers(
       case 'llm.complete':
         if (!acceptsRoute(input.route)) return denied('forbidden');
         return context.complete(input);
+      default:
+        return (
+          (await dispatchRecordTool(
+            request,
+            records,
+            state.rows.record_review,
+            providers?.scoring,
+          )) ?? unavailable()
+        );
     }
   }
 

@@ -35,6 +35,11 @@ type Options = {
     scope: CallEnvelope,
     capability: RuntimeCapability,
   ) => boolean | Promise<boolean>;
+  pendingApprovals?: (tenantId: string) => Promise<Approval[]>;
+  approvalPreviews?: (
+    tenantId: string,
+    approvalId: string,
+  ) => Promise<MessagePreview[] | undefined>;
 };
 
 type InboxItem = ApprovalMaterial & {
@@ -79,8 +84,13 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
       request: Request,
     ): Promise<ToolResultMap[Request['tool']]> {
       const result = await options.gateway.call(request);
-      if (request.tool === 'llm.complete' && result.state === 'ok') {
-        audit.record(request.envelope, request.input.route);
+      if (
+        request.tool === 'llm.complete' &&
+        result.state === 'ok' &&
+        result.output &&
+        'route' in result.output
+      ) {
+        audit.record(request.envelope, result.output.route);
       }
       return result;
     },
@@ -244,6 +254,7 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
       if ('code' in result) return result;
     },
     addApproval,
+    pendingApprovals: options.pendingApprovals,
     chatInput,
     propose: router.propose,
   });
@@ -340,9 +351,16 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
   get(
     '/approvals',
     (_params, scope) =>
-      [...inbox.values()]
-        .filter((item) => canApprove(scope, item.approval))
-        .map(({ approval, draft, previews, result }) => ({ approval, draft, previews, result })),
+      Promise.all(
+        [...inbox.values()]
+          .filter((item) => canApprove(scope, item.approval))
+          .map(async ({ approval, draft, previews, result }) => ({
+            approval,
+            draft,
+            result,
+            previews: previews ?? (await options.approvalPreviews?.(scope.tenantId, approval.id)),
+          })),
+      ),
     true,
   );
   post<{ approvalId: string }>(

@@ -718,6 +718,636 @@
           }
         }
       }
+    },
+    "/v1/tools/order.list": {
+      "post": {
+        "operationId": "ListOrders",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListOrdersRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListOrdersResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/purchase.request.list": {
+      "post": {
+        "operationId": "ListPurchaseRequests",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListPurchaseRequestsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPurchaseRequestsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/purchase.order.list": {
+      "post": {
+        "operationId": "ListPurchaseOrders",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListPurchaseOrdersRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPurchaseOrdersResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/inventory.list": {
+      "post": {
+        "operationId": "ListSkus",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListSkusRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListSkusResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/vendor.list": {
+      "post": {
+        "operationId": "ListVendors",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListVendorsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListVendorsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/customer.list": {
+      "post": {
+        "operationId": "ListCustomers",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListCustomersRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListCustomersResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/contact.list": {
+      "post": {
+        "operationId": "ListContacts",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListContactsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListContactsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/invoice.list": {
+      "post": {
+        "operationId": "ListInvoices",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListInvoicesRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListInvoicesResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/deal.list": {
+      "post": {
+        "operationId": "ListDeals",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListDealsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListDealsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/purchase.order.drafts.list": {
+      "post": {
+        "operationId": "ListPurchaseDrafts",
+        "tags": [
+          "procurement"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListPurchaseDraftsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListPurchaseDraftsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/customer.consent.read": {
+      "post": {
+        "operationId": "ReadCustomerConsent",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadCustomerConsentRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadCustomerConsentResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/fraud.queue": {
+      "post": {
+        "operationId": "ListFraudQueue",
+        "tags": [
+          "insights"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ListFraudQueueRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ListFraudQueueResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/fraud.review": {
+      "post": {
+        "operationId": "ReviewFraud",
+        "tags": [
+          "insights"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewFraudRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewFraudResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/profile.review.read": {
+      "post": {
+        "operationId": "ReadProfileReview",
+        "tags": [
+          "insights"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadProfileReviewRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadProfileReviewResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/profile.review": {
+      "post": {
+        "operationId": "ReviewProfile",
+        "tags": [
+          "insights"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReviewProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReviewProfileResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
     }
   },
   "components": {
@@ -1840,6 +2470,127 @@
           "llmRoutes",
           "entitlements",
           "audio"
+        ]
+      },
+      "Contact": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string"
+          },
+          "phone": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "customerId",
+          "name",
+          "email",
+          "phone"
+        ]
+      },
+      "Deal": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "title": {
+            "type": "string"
+          },
+          "stage": {
+            "enum": [
+              "lead",
+              "qualified",
+              "proposal",
+              "won",
+              "lost"
+            ]
+          },
+          "valueCents": {
+            "$ref": "#/components/schemas/Count"
+          }
+        },
+        "required": [
+          "id",
+          "customerId",
+          "title",
+          "stage",
+          "valueCents"
+        ]
+      },
+      "FraudDecision": {
+        "enum": [
+          "clear",
+          "escalate"
+        ]
+      },
+      "FraudReviewEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FraudDecision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "orderId",
+          "decision"
+        ]
+      },
+      "ConsentEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "$ref": "#/components/schemas/MessageChannel"
+          },
+          "state": {
+            "enum": [
+              "allowed",
+              "suppressed",
+              "unknown"
+            ]
+          },
+          "evidenceId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "channel",
+          "state"
+        ]
+      },
+      "ProfileReviewStatus": {
+        "enum": [
+          "pending",
+          "accepted",
+          "rejected"
         ]
       },
       "ReadOrderInput": {
@@ -3401,6 +4152,1436 @@
           }
         ]
       },
+      "ListOrdersInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": []
+      },
+      "ListOrdersRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "order.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListOrdersInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListOrdersOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListOrdersOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListOrdersOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListOrdersResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListOrdersOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListPurchaseRequestsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          }
+        },
+        "required": []
+      },
+      "ListPurchaseRequestsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "purchase.request.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListPurchaseRequestsInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListPurchaseRequestsOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseRequest"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListPurchaseRequestsOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListPurchaseRequestsOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListPurchaseRequestsResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListPurchaseRequestsOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListPurchaseOrdersInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          }
+        },
+        "required": []
+      },
+      "ListPurchaseOrdersRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "purchase.order.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListPurchaseOrdersInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListPurchaseOrdersOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseOrder"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListPurchaseOrdersOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListPurchaseOrdersOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListPurchaseOrdersResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListPurchaseOrdersOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListSkusInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          }
+        },
+        "required": []
+      },
+      "ListSkusRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "inventory.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListSkusInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListSkusOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sku"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListSkusOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListSkusOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListSkusResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListSkusOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListVendorsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          }
+        },
+        "required": []
+      },
+      "ListVendorsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "vendor.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListVendorsInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListVendorsOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Vendor"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListVendorsOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListVendorsOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListVendorsResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListVendorsOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListCustomersInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          }
+        },
+        "required": []
+      },
+      "ListCustomersRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "customer.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListCustomersInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListCustomersOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Customer"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListCustomersOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListCustomersOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListCustomersResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListCustomersOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListContactsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": []
+      },
+      "ListContactsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "contact.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListContactsInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListContactsOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Contact"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListContactsOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListContactsOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListContactsResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListContactsOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListInvoicesInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": []
+      },
+      "ListInvoicesRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "invoice.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListInvoicesInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListInvoicesOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListInvoicesOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListInvoicesOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListInvoicesResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListInvoicesOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListDealsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "cursor": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100
+          },
+          "query": {
+            "type": "string",
+            "pattern": "^[^\\r\\n]{1,128}$"
+          }
+        },
+        "required": []
+      },
+      "ListDealsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "deal.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListDealsInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListDealsOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Deal"
+            }
+          },
+          "nextCursor": {
+            "anyOf": [
+              {
+                "type": "string",
+                "pattern": "^[a-f0-9]{32}[.][a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "items",
+          "nextCursor"
+        ]
+      },
+      "ListDealsOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListDealsOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListDealsResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListDealsOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListPurchaseDraftsInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "ListPurchaseDraftsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "purchase.order.drafts.list"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListPurchaseDraftsInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListPurchaseDraftsOutput": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/DraftPurchaseOrderOutput"
+        }
+      },
+      "ListPurchaseDraftsOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListPurchaseDraftsOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListPurchaseDraftsResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListPurchaseDraftsOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ReadCustomerConsentInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "customerId"
+        ]
+      },
+      "ReadCustomerConsentRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "customer.consent.read"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReadCustomerConsentInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ReadCustomerConsentOutput": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/ConsentEntry"
+        }
+      },
+      "ReadCustomerConsentOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ReadCustomerConsentOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ReadCustomerConsentResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadCustomerConsentOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ListFraudQueueInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "ListFraudQueueRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "fraud.queue"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ListFraudQueueInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ListFraudQueueOutput": {
+        "type": "array",
+        "items": {
+          "$ref": "#/components/schemas/FraudReviewEntry"
+        }
+      },
+      "ListFraudQueueOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ListFraudQueueOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ListFraudQueueResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ListFraudQueueOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ReviewFraudInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "decision": {
+            "$ref": "#/components/schemas/FraudDecision"
+          }
+        },
+        "required": [
+          "orderId",
+          "decision"
+        ]
+      },
+      "ReviewFraudRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "fraud.review"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReviewFraudInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ReviewFraudOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "ReviewFraudOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ReviewFraudOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ReviewFraudResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReviewFraudOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ReadProfileReviewInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "customerId"
+        ]
+      },
+      "ReadProfileReviewRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "profile.review.read"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReadProfileReviewInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ReadProfileReviewOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "reviewStatus": {
+            "$ref": "#/components/schemas/ProfileReviewStatus"
+          }
+        },
+        "required": [
+          "reviewStatus"
+        ]
+      },
+      "ReadProfileReviewOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ReadProfileReviewOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ReadProfileReviewResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadProfileReviewOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ReviewProfileInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "decision": {
+            "enum": [
+              "accept",
+              "reject"
+            ]
+          }
+        },
+        "required": [
+          "customerId",
+          "decision"
+        ]
+      },
+      "ReviewProfileRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "profile.review"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReviewProfileInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ReviewProfileOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {},
+        "required": []
+      },
+      "ReviewProfileOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ReviewProfileOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ReviewProfileResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReviewProfileOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
       "ToolName": {
         "enum": [
           "order.read",
@@ -3419,7 +5600,22 @@
           "forecast.run",
           "profile.run",
           "chat.run",
-          "llm.complete"
+          "llm.complete",
+          "order.list",
+          "purchase.request.list",
+          "purchase.order.list",
+          "inventory.list",
+          "vendor.list",
+          "customer.list",
+          "contact.list",
+          "invoice.list",
+          "deal.list",
+          "purchase.order.drafts.list",
+          "customer.consent.read",
+          "fraud.queue",
+          "fraud.review",
+          "profile.review.read",
+          "profile.review"
         ]
       },
       "ToolCall": {
@@ -3474,6 +5670,51 @@
           },
           {
             "$ref": "#/components/schemas/CompleteLlmRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListOrdersRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListPurchaseRequestsRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListPurchaseOrdersRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListSkusRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListVendorsRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListCustomersRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListContactsRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListInvoicesRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListDealsRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListPurchaseDraftsRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ReadCustomerConsentRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ListFraudQueueRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ReviewFraudRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ReadProfileReviewRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ReviewProfileRequest"
           }
         ]
       },
@@ -3529,6 +5770,51 @@
           },
           {
             "$ref": "#/components/schemas/CompleteLlmResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListOrdersResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListPurchaseRequestsResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListPurchaseOrdersResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListSkusResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListVendorsResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListCustomersResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListContactsResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListInvoicesResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListDealsResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListPurchaseDraftsResult"
+          },
+          {
+            "$ref": "#/components/schemas/ReadCustomerConsentResult"
+          },
+          {
+            "$ref": "#/components/schemas/ListFraudQueueResult"
+          },
+          {
+            "$ref": "#/components/schemas/ReviewFraudResult"
+          },
+          {
+            "$ref": "#/components/schemas/ReadProfileReviewResult"
+          },
+          {
+            "$ref": "#/components/schemas/ReviewProfileResult"
           }
         ]
       }

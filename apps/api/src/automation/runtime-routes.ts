@@ -31,6 +31,7 @@ type Context = {
   ) => void;
   chatInput: (sessionId: string, prompt: string, route: 'native' | 'byo') => RunChatInput;
   propose: (input: RunChatInput) => ToolProposal | null;
+  pendingApprovals?: (tenantId: string) => Promise<Approval[]>;
 };
 
 type BotEntry = {
@@ -225,6 +226,37 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
   app.get(
     '/bots',
     scoped('bot', () => ctx.worker.invoke({ kind: 'bot-list' })),
+  );
+  app.get(
+    '/bots/runs',
+    scoped('bot', (_request, _reply, scope) =>
+      [...bots.values()]
+        .filter((entry) => owns(entry, scope))
+        .reverse()
+        .map(({ view }) => view),
+    ),
+  );
+  app.get(
+    '/bots/approvals',
+    scoped(
+      'bot',
+      async (_request, _reply, scope) => {
+        const live = await ctx.pendingApprovals?.(scope.tenantId);
+        return [...bots.values()].reverse().flatMap(({ view, cancelRequested }) => {
+          const { pending, id: runId, status } = view;
+          if (
+            cancelRequested ||
+            status !== 'pending_approval' ||
+            !pending ||
+            !matches(pending.approval, scope, pending.approval.id) ||
+            (live && !live.some(({ id }) => id === pending.approval.id))
+          )
+            return [];
+          return [{ runId, pending }];
+        });
+      },
+      true,
+    ),
   );
   app.post(
     '/bots/runs',

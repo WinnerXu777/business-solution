@@ -7,6 +7,15 @@ x-app: &app
     dockerfile: infra/ci.Dockerfile
 
 services:
+  dex:
+    image: ghcr.io/dexidp/dex:v2.41.1
+    profiles: ['oidc']
+    command: ['dex', 'serve', '/etc/dex/rivetquay.yaml']
+    ports:
+      - '127.0.0.1:${DEX_PORT:-5556}:5556'
+    volumes:
+      - ${DEX_CONFIG:-./dex.yaml}:/etc/dex/rivetquay.yaml:ro
+
   postgres:
     image: postgres:17.7-alpine
     environment:
@@ -53,6 +62,10 @@ services:
       API_HOST: 0.0.0.0
       DATABASE_URL: postgres://demo:demo-local-only@postgres:5432/demo
       BS_FIXTURE_LOGIN: '1'
+      BS_AUTH_MODE: ${BS_AUTH_MODE:-fixture}
+      BS_DEX_ISSUER: ${BS_DEX_ISSUER:-http://localhost:5556/dex}
+      BS_DEX_IN_COMPOSE: '1'
+      BS_OIDC_REDIRECT_URI: ${BS_OIDC_REDIRECT_URI:-http://localhost:5173/oidc/callback}
       BS_MAILPIT: '1'
       BS_MAILPIT_HOST: mailpit
       BS_WORKER_PYTHON: /repo/infra/compose/worker-client.mjs
@@ -99,6 +112,7 @@ services:
     environment:
       VITE_API_PROXY_TARGET: http://api:3000
       VITE_FIXTURE_LOGIN: '1'
+      VITE_BS_AUTH_MODE: ${BS_AUTH_MODE:-fixture}
     ports:
       - '127.0.0.1:${WEB_PORT:-5173}:5173'
     depends_on:
@@ -110,7 +124,7 @@ services:
           'CMD',
           'node',
           '-e',
-          "fetch('http://127.0.0.1:5173/platform/v1/health', { headers: { Authorization: 'Bearer fixture-operator' } }).then(r => { if (!r.ok) process.exit(1) })",
+          "fetch('http://127.0.0.1:5173/').then(r => { if (!r.ok) process.exit(1) })",
         ]
       interval: 5s
       timeout: 3s

@@ -10,6 +10,7 @@ import {
   type CallEnvelope,
   type CompleteLlmInput,
   type DemoFixtures,
+  type Entitlement,
   type ModuleId,
   type ToolCall,
   type ToolName,
@@ -29,6 +30,9 @@ import {
   type TenantState,
 } from './store.ts';
 import { createToolHandlers } from './tools.ts';
+import { isReadTool, reviewEvidenceTools, reviewTools } from './records.ts';
+
+type GovernancePermission = 'records.read' | 'actions.request' | 'approvals.decide';
 
 export interface GovernedGatewayOptions {
   fixtures?: DemoFixtures;
@@ -42,11 +46,14 @@ export interface GovernedGatewayOptions {
   billing?: () => Pick<BillingLedger, 'plan' | 'recordUsage'>;
   onBillingError?: (error: unknown) => void;
   moduleOverride?: (tenantId: string, module: ModuleId) => Promise<boolean | undefined>;
-}
-
-function allows(role: ActorGrant['role'] | undefined, tool: ToolName) {
-  if (tool === 'purchase.order.approve') return role === 'approver';
-  return role !== undefined && role !== 'admin' && (tool.endsWith('.read') || role === 'operator');
+  entitlement?: (tenantId: string, module: ModuleId) => Promise<Entitlement | undefined>;
+  identity?: {
+    allows(
+      scope: Pick<CallEnvelope, 'tenantId' | 'actor'>,
+      permission: GovernancePermission,
+    ): boolean;
+    actors(tenantId: string): CallEnvelope['actor'][];
+  };
 }
 
 function actionKey({ tenantId, actor, idempotencyKey }: CallEnvelope, action: string) {
@@ -92,7 +99,7 @@ export class GovernedGateway implements ToolGateway {
           approvalId,
         } = intent;
         const row = state.rows.approval.get(approvalId);
-        if (!allows(this.role(envelope), tool)) return denied('forbidden');
+        if (!this.canCall(envelope, tool)) return denied('forbidden');
         if (!row || row.grant.state !== 'consumed' || !(await this.current(row))) {
           if (row) row.grant.state = 'denied';
           return denied('invalid_approval');
@@ -223,7 +230,7 @@ export class GovernedGateway implements ToolGateway {
   listApprovals(tenantId: string, state?: Approval['state']) {
     return this.store.transact(tenantId, async (stored) => {
       const approvals = new ApprovalLedger(stored.rows.approval);
-      const result: Approval[] = [];
+      const result: (Approval & { materialPreview?: object })[] = [];
       for (const row of approvals.list()) {
         await this.refresh(row);
         const effective = row.rejectionReason !== undefined ? 'rejected' : row.grant.state;
@@ -232,9 +239,35 @@ export class GovernedGateway implements ToolGateway {
           state === 'denied' && (effective === 'expired' || effective === 'rejected')
             ? 'denied'
             : effective;
-        if (state === undefined || state === visible) result.push({ ...row.grant, state: visible });
+        if (state === undefined || state === visible) {
+          const grant = { ...row.grant, state: visible };
+          const intent =
+            visible === 'pending' && grant.tool === 'workflow.template.run'
+              ? await this.handlers.currentIntent(tenantId, grant.tool, row.target)
+              : undefined;
+          const materialPreview =
+            intent && matchesBinding(row, intent, this.policyVersion(), this.now())
+              ? {
+                  subjectId: grant.subjectId,
+                  sourceVersion: grant.sourceVersion,
+                  ...(Array.isArray(intent.material) && { recipientCount: intent.material.length }),
+                }
+              : undefined;
+          result.push({ ...grant, ...(materialPreview && { materialPreview }) });
+        }
       }
       return result;
+    });
+  }
+
+  approvalPreviews(tenantId: string, approvalId: string) {
+    return this.store.transact(tenantId, async (state) => {
+      const row = state.rows.approval.get(approvalId);
+      if (!row || row.grant.tool !== 'workflow.template.run' || row.grant.state !== 'pending')
+        return;
+      const intent = await this.handlers.currentIntent(tenantId, row.grant.tool, row.target);
+      if (intent && matchesBinding(row, intent, this.policyVersion(), this.now()))
+        return intent.material as import('@bs/contracts').MessagePreview[];
     });
   }
 
@@ -291,7 +324,7 @@ export class GovernedGateway implements ToolGateway {
         const approvals = new ApprovalLedger(state.rows.approval);
         const row = approvals.get(id);
         let result;
-        if (this.role(snapshot) !== 'approver') {
+        if (!this.allows(snapshot, 'approvals.decide')) {
           result = denied('forbidden');
         } else if (!row || !approvals.canDecide(snapshot, row.grant)) {
           result = denied('invalid_approval');
@@ -318,17 +351,16 @@ export class GovernedGateway implements ToolGateway {
     const intent = await this.handlers.currentIntent(grant.tenantId, grant.tool, target);
     return (
       matchesBinding(row, intent, this.policyVersion(), this.now()) &&
-      this.fixtures.grants.some(
-        (identity) =>
-          identity.tenantId === grant.tenantId &&
-          identity.actor.id === grant.approverId &&
-          identity.role === 'approver',
+      this.actors(grant.tenantId).some(
+        (actor) =>
+          actor.id === grant.approverId &&
+          actor.kind === 'person' &&
+          this.allows({ tenantId: grant.tenantId, actor }, 'approvals.decide'),
       ) &&
-      this.fixtures.grants.some(
-        (identity) =>
-          identity.tenantId === grant.tenantId &&
-          identity.actor.id === grant.requestedBy &&
-          identity.role === 'operator',
+      this.actors(grant.tenantId).some(
+        (actor) =>
+          actor.id === grant.requestedBy &&
+          this.allows({ tenantId: grant.tenantId, actor }, 'actions.request'),
       )
     );
   }
@@ -349,13 +381,37 @@ export class GovernedGateway implements ToolGateway {
     return result;
   }
 
-  private role({ tenantId, actor }: CallEnvelope) {
-    return this.fixtures.grants.find(
+  private actors(tenantId: string) {
+    return (
+      this.options.identity?.actors(tenantId) ??
+      this.fixtures.grants.filter((grant) => grant.tenantId === tenantId).map(({ actor }) => actor)
+    );
+  }
+
+  private canCall(scope: CallEnvelope, tool: ToolName) {
+    if (reviewTools.has(tool)) return this.allows(scope, 'approvals.decide');
+    if (isReadTool(tool)) return this.allows(scope, 'records.read');
+    return (
+      this.allows(scope, 'actions.request') ||
+      (reviewEvidenceTools.has(tool) && this.allows(scope, 'approvals.decide'))
+    );
+  }
+
+  private allows(
+    scope: Pick<CallEnvelope, 'tenantId' | 'actor'>,
+    permission: GovernancePermission,
+  ) {
+    if (this.options.identity) return this.options.identity.allows(scope, permission);
+    const { tenantId, actor } = scope;
+    const role: ActorGrant['role'] | undefined = this.fixtures.grants.find(
       (grant) =>
         grant.tenantId === tenantId &&
         grant.actor.id === actor.id &&
         grant.actor.kind === actor.kind,
     )?.role;
+    if (permission === 'approvals.decide') return role === 'approver';
+    if (permission === 'actions.request') return role === 'operator';
+    return role !== undefined && role !== 'admin';
   }
 
   private async checkEntitlement(
@@ -366,14 +422,16 @@ export class GovernedGateway implements ToolGateway {
     excludeJob?: string,
   ) {
     const instant = Date.parse(now);
-    const entitlement = this.fixtures.entitlements.find(
-      (row) =>
-        row.tenantId === tenantId &&
-        row.flag.module === module &&
-        row.unit === 'actions' &&
-        Date.parse(row.windowStart) <= instant &&
-        instant < Date.parse(row.windowEnd),
-    );
+    const entitlement = this.options.entitlement
+      ? await this.options.entitlement(tenantId, module)
+      : this.fixtures.entitlements.find(
+          (row) =>
+            row.tenantId === tenantId &&
+            row.flag.module === module &&
+            row.unit === 'actions' &&
+            Date.parse(row.windowStart) <= instant &&
+            instant < Date.parse(row.windowEnd),
+        );
     const override = await this.moduleOverride?.(tenantId, module);
     if (!entitlement || !(override ?? entitlement.flag.enabled)) return denied('module_disabled');
     const inWindow = (time: string) =>
@@ -475,7 +533,7 @@ export class GovernedGateway implements ToolGateway {
         let dispatch = false;
         let result: ToolResult;
         let llmBinding: { providerId: string; bindingVersion: number } | undefined;
-        if (!allows(this.role(envelope), tool)) {
+        if (!this.canCall(envelope, tool)) {
           result = denied('forbidden');
         } else if (cached) {
           if (cached.fingerprint !== fingerprint) {
@@ -485,7 +543,10 @@ export class GovernedGateway implements ToolGateway {
             const approval =
               result.state === 'pending_approval'
                 ? result.approval
-                : result.state === 'ok' && 'approval' in result.output
+                : result.state === 'ok' &&
+                    result.output &&
+                    typeof result.output === 'object' &&
+                    'approval' in result.output
                   ? result.output.approval
                   : undefined;
             if (approval) {
@@ -518,12 +579,12 @@ export class GovernedGateway implements ToolGateway {
                 actionId,
                 policyVersion,
                 now: occurredAt,
-                approverId: this.fixtures.grants.find(
-                  (grant) =>
-                    grant.tenantId === tenantId &&
-                    grant.role === 'approver' &&
-                    grant.actor.id !== actor.id,
-                )?.actor.id,
+                approverId: this.actors(tenantId).find(
+                  (candidate) =>
+                    candidate.kind === 'person' &&
+                    candidate.id !== actor.id &&
+                    this.allows({ tenantId, actor: candidate }, 'approvals.decide'),
+                )?.id,
                 complete: (input) =>
                   this.complete(state, envelope, actionId, occurredAt, input, tool, (binding) => {
                     llmBinding = binding;
