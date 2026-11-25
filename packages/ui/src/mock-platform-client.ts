@@ -1,3 +1,6 @@
+import { createMockAutomation, MockAutomationState } from './clients/mock-automation.ts';
+import { createMockRecords, MockRecordsState } from './clients/mock-records.ts';
+import { createMockAdministration } from './clients/mock-administration.ts';
 import { loadDemoFixtures } from '@bs/contracts';
 import type { AuditEntry, ModuleId, UsageCounterEvent } from '@bs/contracts';
 import {
@@ -135,9 +138,17 @@ export interface MockPlatformClientOptions {
   role?: PlatformRole;
   tenantId?: string;
   now?: string;
+  automationState?: MockAutomationState;
+  recordsState?: MockRecordsState;
 }
 
 export class MockPlatformClient implements PlatformClient {
+  readonly automation: PlatformClient['automation'];
+  readonly records: PlatformClient['records'];
+  readonly insights: PlatformClient['insights'];
+  readonly billing: PlatformClient['billing'];
+  readonly credentials: PlatformClient['credentials'];
+  readonly connectors: PlatformClient['connectors'];
   private readonly identity: PlatformIdentity;
   private readonly now: string;
   private readonly modules: PlatformModule[];
@@ -154,6 +165,8 @@ export class MockPlatformClient implements PlatformClient {
     role = 'admin',
     tenantId = 'tenant-rivetquay',
     now,
+    automationState = new MockAutomationState(),
+    recordsState = new MockRecordsState(),
   }: MockPlatformClientOptions = {}) {
     const fixtures = loadDemoFixtures();
     const workspace = fixtures.workspaces.find((item) => item.id === tenantId);
@@ -175,6 +188,28 @@ export class MockPlatformClient implements PlatformClient {
       workspaces: [tenant],
     };
     this.now = now ?? fixtures.asOf;
+    const enabled = (module: ModuleId) =>
+      this.modules.some((item) => item.moduleId === module && item.enabled);
+    this.automation = createMockAutomation(
+      this.identity,
+      fixtures,
+      this.now,
+      automationState,
+      enabled,
+    );
+    const { records, insights } = createMockRecords(
+      this.identity,
+      fixtures,
+      this.now,
+      recordsState,
+      enabled,
+    );
+    this.records = records;
+    this.insights = insights;
+    const { billing, credentials, connectors } = createMockAdministration(this.identity, this.now);
+    this.billing = billing;
+    this.credentials = credentials;
+    this.connectors = connectors;
     const isRivetquay = tenantId === 'tenant-rivetquay';
     const order = fixtures.orders.find((item) => item.tenantId === tenantId);
     const quantities = isRivetquay ? [12, 8, 24, 3, 5, 7] : [];
