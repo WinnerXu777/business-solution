@@ -9,6 +9,10 @@
   "dependencies": {
     "@bs/contracts": "workspace:*",
     "@bs/core": "workspace:*",
-    "fastify": "5.6.2"
+    "fastify": "5.6.2",
+    "pg": "^8.23.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.23.1"
   }
 }
