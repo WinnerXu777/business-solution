@@ -20,14 +20,17 @@ const statements = [
   'SET LOCAL standard_conforming_strings = on;',
   'CREATE SCHEMA IF NOT EXISTS demo_fixture;',
 ];
-for (const [key, [table, keyOf]] of Object.entries(tables)) {
-  const target = 'demo_fixture.' + table;
+function resetTable(target) {
   statements.push(
     'CREATE TABLE IF NOT EXISTS ' +
       target +
       ' (tenant_id text NOT NULL, id text NOT NULL, payload jsonb NOT NULL, PRIMARY KEY (tenant_id, id));',
     'TRUNCATE ' + target + ';',
   );
+}
+for (const [key, [table, keyOf]] of Object.entries(tables)) {
+  const target = 'demo_fixture.' + table;
+  resetTable(target);
   if (fixtures[key].length === 0) continue;
   const rows = fixtures[key].map(
     (row) => '(' + [...keyOf(row), JSON.stringify(row)].map(quote).join(', ') + '::jsonb)',
@@ -36,6 +39,7 @@ for (const [key, [table, keyOf]] of Object.entries(tables)) {
     'INSERT INTO ' + target + ' (tenant_id, id, payload) VALUES\n  ' + rows.join(',\n  ') + ';',
   );
 }
+resetTable('demo_fixture.purchase_order');
 statements.push('COMMIT;', '');
 const sql = statements.join('\n');
 const target = new URL('seed.sql', folder);

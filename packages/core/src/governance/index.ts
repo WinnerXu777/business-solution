@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { ProviderAdapters } from '@bs/adapters';
+import { MemoryRecordRepository, type RecordRepository } from '@bs/business';
 import {
   loadDemoFixtures,
   toolModules,
@@ -14,13 +15,9 @@ import {
   type ToolResultMap,
   type UsageCounterEvent,
 } from '@bs/contracts';
-import {
-  MemoryRecordRepository,
-  type RecordRepository,
-} from '../../../business/src/persistence/index.ts';
 import type { ToolGateway } from '../index.ts';
 import { ApprovalLedger } from './approvals.ts';
-import { denied, digest, unavailable } from './results.ts';
+import { denied, digest, isRetryableOutcome, unavailable } from './results.ts';
 import { createToolHandlers } from './tools.ts';
 
 export interface GovernedGatewayOptions {
@@ -173,7 +170,9 @@ export class GovernedGateway implements ToolGateway {
               ? denied('invalid_approval')
               : this.checkEntitlement(tenantId, module, this.now()),
         }).catch(() => unavailable()));
-      this.outcomes.set(actionId, { fingerprint, result: structuredClone(result) });
+      if (!isRetryableOutcome(result)) {
+        this.outcomes.set(actionId, { fingerprint, result: structuredClone(result) });
+      }
       if (result.state === 'ok') {
         this.events.push({
           id: 'usage-' + actionId,

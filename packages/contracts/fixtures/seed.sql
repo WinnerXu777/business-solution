@@ -104,4 +104,6 @@ INSERT INTO demo_fixture.entitlement (tenant_id, id, payload) VALUES
   ('tenant-spoolharbour', 'workflows:actions', '{"tenantId":"tenant-spoolharbour","flag":{"module":"workflows","enabled":true},"unit":"actions","allowance":40,"windowStart":"2026-11-01T00:00:00Z","windowEnd":"2026-12-01T00:00:00Z"}'::jsonb),
   ('tenant-spoolharbour', 'insights:actions', '{"tenantId":"tenant-spoolharbour","flag":{"module":"insights","enabled":true},"unit":"actions","allowance":40,"windowStart":"2026-11-01T00:00:00Z","windowEnd":"2026-12-01T00:00:00Z"}'::jsonb),
   ('tenant-spoolharbour', 'ai:actions', '{"tenantId":"tenant-spoolharbour","flag":{"module":"ai","enabled":true},"unit":"actions","allowance":12,"windowStart":"2026-11-01T00:00:00Z","windowEnd":"2026-12-01T00:00:00Z"}'::jsonb);
+CREATE TABLE IF NOT EXISTS demo_fixture.purchase_order (tenant_id text NOT NULL, id text NOT NULL, payload jsonb NOT NULL, PRIMARY KEY (tenant_id, id));
+TRUNCATE demo_fixture.purchase_order;
 COMMIT;

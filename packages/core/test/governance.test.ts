@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { createFakeProviders } from '@bs/adapters';
+import { MemoryRecordRepository } from '@bs/business';
 import {
   loadDemoFixtures,
   type ActorGrant,
@@ -9,7 +10,6 @@ import {
   type ToolName,
   type ToolRequestMap,
 } from '@bs/contracts';
-import { MemoryRecordRepository } from '../../business/src/persistence/index.ts';
 import { GovernedGateway } from '../src/governance/index.ts';
 
 const fixtures = loadDemoFixtures();
@@ -184,6 +184,107 @@ test('roles, tenant scope, module flags and quota govern new work', async () => 
     code(await call(gateway, 'fraud.score', { orderId: 'ord-003' }, 'disabled')),
     'module_disabled',
   );
+});
+
+test('a same-key read retries a repository outage and meters the recovered result once', async () => {
+  const records = new MemoryRecordRepository();
+  const get = records.get.bind(records);
+  let attempts = 0;
+  records.get = async (kind, tenantId, id) => {
+    if (++attempts === 1) throw new Error('Temporary repository outage');
+    return get(kind, tenantId, id);
+  };
+  const gateway = new GovernedGateway({ records, now: clock });
+  const read = (orderId = 'ord-001', key = 'read') =>
+    call(gateway, 'order.read', { orderId }, key, reader);
+
+  assert.equal(code(await read()), 'unavailable');
+  assert.equal(gateway.usage().length, 0);
+  const recovered = await read();
+  assert.equal(recovered.state, 'ok');
+  assert.deepEqual(await read(), recovered);
+
+  const missing = await read('ord-absent', 'missing');
+  assert.equal(code(missing), 'not_found');
+  assert.deepEqual(await read('ord-absent', 'missing'), missing);
+  assert.equal(code(await read('ord-001', 'missing')), 'idempotency_conflict');
+  assert.equal(attempts, 3);
+  assert.equal(gateway.usage().length, 1);
+});
+
+for (const denial of ['quota_exceeded', 'module_disabled'] as const) {
+  test(`a same-key read recovers from ${denial} in the next entitlement window`, async () => {
+    const local = loadDemoFixtures();
+    const current = local.entitlements.find(
+      (entry) => entry.tenantId === reader.tenantId && entry.flag.module === 'records',
+    )!;
+    current.allowance = 1;
+    current.flag.enabled = denial !== 'module_disabled';
+    local.entitlements.push({
+      ...current,
+      flag: { ...current.flag, enabled: true },
+      windowStart: current.windowEnd,
+      windowEnd: '2027-01-01T00:00:00Z',
+    });
+    let now = local.asOf;
+    const gateway = new GovernedGateway({ fixtures: local, now: () => now });
+    const read = (key: string) => call(gateway, 'order.read', { orderId: 'ord-001' }, key, reader);
+    if (denial === 'quota_exceeded') assert.equal((await read('use-quota')).state, 'ok');
+    assert.equal(code(await read('retry')), denial);
+
+    now = current.windowEnd;
+    const recovered = await read('retry');
+    assert.equal(recovered.state, 'ok');
+    assert.deepEqual(await read('retry'), recovered);
+    assert.equal(gateway.usage().filter((event) => event.occurredAt === now).length, 1);
+  });
+}
+
+test('a retryable provider failure keeps the approved action eligible for the same-key retry', async () => {
+  const providers = createFakeProviders();
+  const email = providers.messages.email;
+  const actionIds: string[] = [];
+  providers.messages.email = {
+    send(preview, actionId) {
+      actionIds.push(actionId);
+      if (actionIds.length === 1) {
+        return {
+          state: 'failed',
+          code: 'provider_error',
+          message: 'Retry later.',
+          retryable: true,
+        };
+      }
+      return email.send(preview, actionId);
+    },
+  };
+  const gateway = new GovernedGateway({ providers, now: clock });
+  const preview = await call(
+    gateway,
+    'message.preview',
+    { invoiceId: 'inv-001', channel: 'email' },
+    'preview',
+  );
+  assert.equal(preview.state, 'ok');
+  const previewId = preview.output.id;
+  const prepare = () =>
+    call(gateway, 'collections.email.send', { previewId, approvalId: null }, 'prepare');
+  const pending = await prepare();
+  assert.equal(pending.state, 'pending_approval');
+  const approvalId = pending.approval.id;
+  const signed = await gateway.signApproval(envelope('sign', approver), approvalId);
+  assert.ok('state' in signed && signed.state === 'approved');
+  assert.deepEqual(await prepare(), pending);
+
+  const send = (key = 'send') =>
+    call(gateway, 'collections.email.send', { previewId, approvalId }, key);
+  assert.equal(code(await send()), 'provider_error');
+  const recovered = await send();
+  assert.equal(recovered.state, 'ok');
+  assert.deepEqual(await send(), recovered);
+  assert.equal(code(await send('new-key')), 'invalid_approval');
+  assert.deepEqual(actionIds, [actionIds[0], actionIds[0]]);
+  assert.equal(gateway.usage().filter((event) => event.outcomeId === actionIds[0]).length, 1);
 });
 
 test('unknown delivery stays on hold across retry keys and audit snapshots redact material', async () => {

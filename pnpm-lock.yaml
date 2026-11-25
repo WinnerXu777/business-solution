@@ -20,6 +20,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@bs/business':
+        specifier: workspace:*
+        version: link:../../packages/business
       '@bs/contracts':
         specifier: workspace:*
         version: link:../../packages/contracts

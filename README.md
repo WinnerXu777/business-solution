@@ -30,6 +30,20 @@ uv run --no-sync python -m workers.bs_worker
 
 Open the portal at localhost:5173 and the API health route at localhost:3000/health. Set `API_PORT` for the local API or pass `--port` to the Vite command.
 
+## Governed fixture API
+
+Set `FIXTURE_BEARER_BINDINGS` in the API host environment to a JSON object keyed by opaque bearer tokens. Each value contains `tenantId` and `actorId` from the fixture grants. The server looks up the actor kind and role from the fixtures. With no bindings configured, the REST tool routes and `/mcp` return `401`; `/health` stays public.
+
+```powershell
+$fixtureToken = node -p "require('node:crypto').randomUUID()"
+$env:FIXTURE_BEARER_BINDINGS = @{
+  $fixtureToken = @{ tenantId = 'tenant-rivetquay'; actorId = 'actor-reader' }
+} | ConvertTo-Json -Compress
+pnpm --filter @bs/api dev
+```
+
+Send `Authorization: Bearer <token>` to `POST /v1/tools/order.read` and `POST /mcp`. REST calls include an envelope with the caller's fixture tenant and actor. To list MCP tools, send `Accept: application/json` and the JSON body `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`.
+
 ## Local infrastructure
 
 ```sh
@@ -37,7 +51,9 @@ docker compose -f infra/compose/compose.yaml up -d --wait
 pnpm reset-fixtures
 ```
 
-Postgres initializes with the SQL fixture on a fresh volume. Reset replaces the rows in the `demo_fixture` tables inside the selected Compose project. Start a fresh `FakeGateway` instance to reset in-memory state. Mailpit listens on localhost:8025 for its web inbox and localhost:1025 for SMTP. The optional `placeholders` Compose profile starts stub containers on the app ports.
+Postgres initializes with the SQL fixture on a fresh volume. Reset replaces the rows in the `demo_fixture` tables inside the selected Compose project and clears any generated purchase orders. For an existing volume, run the reset before using the API's Postgres repository.
+
+Set `DATABASE_URL` in the API host environment to use Postgres, for example `postgres://demo:demo-local-only@127.0.0.1:5432/demo` with the default Compose port. With the variable unset, the API seeds its repository in memory. Restart the API to reset its in-memory records, approvals, idempotency outcomes and usage counters. Mailpit listens on localhost:8025 for its web inbox and localhost:1025 for SMTP. The optional `placeholders` Compose profile starts stub containers on the app ports.
 
 For a parallel worktree, copy `infra/compose/.env.example` to `infra/compose/.env.lane`. Choose a distinct `COMPOSE_PROJECT_NAME` and five distinct host ports. Volume names derive from the project unless overridden. Pass `--env-file infra/compose/.env.lane` to Compose and to `pnpm reset-fixtures`.
 

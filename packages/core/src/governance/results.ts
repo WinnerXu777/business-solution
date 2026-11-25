@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Denied, Failed, Unknown } from '@bs/contracts';
+import type { Denied, Failed, ToolResult, Unknown } from '@bs/contracts';
 
 function canonical(value: unknown): string {
   if (Array.isArray(value)) return '[' + value.map(canonical).join(',') + ']';
@@ -28,6 +28,14 @@ export function ok<Output>(output: Output) {
 
 export function denied(code: Denied['code']): Denied {
   return { state: 'denied', code, message: code.replaceAll('_', ' ') };
+}
+
+export function isRetryableOutcome(result: ToolResult): boolean {
+  if (result.state === 'failed') return result.retryable;
+  return (
+    result.state === 'denied' &&
+    (result.code === 'module_disabled' || result.code === 'quota_exceeded')
+  );
 }
 
 export function lookup<Output>(output: Output | undefined) {

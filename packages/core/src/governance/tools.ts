@@ -1,4 +1,5 @@
 import type { ProviderAdapters } from '@bs/adapters';
+import type { RecordRepository } from '@bs/business';
 import {
   type CallEnvelope,
   type DemoFixtures,
@@ -11,12 +12,12 @@ import {
   type ToolInputMap,
   type ToolResult,
 } from '@bs/contracts';
-import type { RecordRepository } from '../../../business/src/persistence/index.ts';
 import { ApprovalLedger, type ApprovalIntent } from './approvals.ts';
 import {
   denied,
   digest,
   invalidInput,
+  isRetryableOutcome,
   lookup,
   ok,
   unavailable,
@@ -65,9 +66,8 @@ export function createToolHandlers(
     const held = approvals.getHold(envelope.tenantId, intent.tool, target);
     if (held) return held;
     if (approvalId === null) return pendingOrDenied(prepare(context, intent));
-    if (!approvals.consume(envelope, intent, approvalId, policyVersion, now())) {
-      return denied('invalid_approval');
-    }
+    const restoreApproval = approvals.consume(envelope, intent, approvalId, policyVersion, now());
+    if (!restoreApproval) return denied('invalid_approval');
     let result;
     try {
       result = await effect();
@@ -77,6 +77,8 @@ export function createToolHandlers(
     if (result.state === 'unknown') {
       result = unknownOutcome(actionId);
       approvals.hold(envelope.tenantId, intent.tool, target, result);
+    } else if (isRetryableOutcome(result)) {
+      restoreApproval();
     }
     return result;
   }

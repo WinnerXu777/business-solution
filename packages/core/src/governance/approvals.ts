@@ -81,7 +81,7 @@ export class ApprovalLedger {
     id: string,
     policyVersion: string,
     now: string,
-  ): boolean {
+  ): (() => void) | undefined {
     const grant = this.grants.get(id);
     const isPo = intent.tool === 'purchase.order.approve';
     if (
@@ -93,14 +93,18 @@ export class ApprovalLedger {
       grant.materialHash !== digest(intent.material) ||
       !this.isCurrent(grant, policyVersion, now)
     )
-      return false;
+      return;
     const actorId = envelope.actor.id;
     const authorized = isPo
       ? grant.state === 'pending' && grant.approverId === actorId && grant.requestedBy !== actorId
       : grant.state === 'approved' && grant.requestedBy === actorId;
-    if (!authorized) return false;
+    if (!authorized) return;
+    const priorState = grant.state;
     grant.state = 'consumed';
-    return true;
+    // An explicitly retryable outcome can reuse the same grant while it is still current.
+    return () => {
+      grant.state = priorState;
+    };
   }
 
   getHold(tenantId: string, tool: ApprovalAction, target: string) {

@@ -1,5 +1,11 @@
 import { loadDemoFixtures, type DemoFixtures } from '@bs/contracts';
 
+export {
+  MemoryRecordRepository,
+  PostgresRecordRepository,
+  type RecordRepository,
+} from './persistence/index.ts';
+
 function byId<Record extends { tenantId: string; id: string }>(
   rows: Record[],
   tenantId: string,
