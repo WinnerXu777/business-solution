@@ -1,12 +1,17 @@
 import { loadDemoFixtures, type AuditEntry, type DemoFixtures } from '@bs/contracts';
+import type { ProviderAdapters } from '@bs/adapters';
 import { GovernedGateway } from '../governance/index.ts';
 import { PlatformAudit, repositoryAuditSink, type AuditSink } from './audit.ts';
 import { BillingLedger, type BillingOptions, type BillingRepositories } from './billing.ts';
 import { fixtureByoPrice } from './billing-gateway.ts';
 import { ConnectionStore, type StoredConnection } from './connections.ts';
+import { guardMessageAdapter } from './contact-gateway.ts';
+import { ContactLedger, type ContactPolicy } from './contacts.ts';
 import { EntitlementStore } from './entitlements.ts';
+import { PlatformEventBus, type WebhookTransport } from './events.ts';
 import { PlatformGateway } from './gateway.ts';
 import { fixtureAdmin, TenantDirectory } from './identity.ts';
+import { PrivacyService, type PrivacyOptions } from './privacy.ts';
 import {
   CapabilityBindingStore,
   ProviderRegistry,
@@ -28,6 +33,12 @@ import {
 
 export { PlatformError, type MutationContext, type PlatformCode } from './audit.ts';
 export { ConnectionStore, type ConnectionInput } from './connections.ts';
+export { guardMessageAdapter } from './contact-gateway.ts';
+export * from './contacts.ts';
+export * from './events.ts';
+export * from './privacy.ts';
+export * from './retention.ts';
+export { dataClasses, fieldClass, redactFields, type DataClass } from './classification.ts';
 export { BillingLedger, type PlanInput, type BillingOptions } from './billing.ts';
 export { billingSkus, catalogPriceVersion, type SkuId } from './billing-catalog.ts';
 export { type BillingUsage, type ProviderPrice } from './billing-usage.ts';
@@ -73,6 +84,10 @@ interface PlatformOptions {
   billing?: BillingOptions;
   fixtureUsageBridge?: boolean;
   vaultMasterKey?: Uint8Array;
+  contactPolicy?: ContactPolicy;
+  privacy?: PrivacyOptions;
+  webhookTransport?: WebhookTransport;
+  fixtureMessages?: ProviderAdapters['messages'];
   repositories?: {
     audit?: TenantRepository<AuditEntry>;
     entitlements?: TenantRepository<boolean>;
@@ -150,11 +165,60 @@ export function createPlatformServices(options: PlatformOptions = {}) {
     (tenantId) => directory.initialPlan(tenantId),
   );
   const providers = new ProviderRegistry();
+  const masterKey = options.vaultMasterKey ?? readVaultMasterKey();
   const vault = new CredentialVault(
-    options.vaultMasterKey ?? readVaultMasterKey(),
+    masterKey,
     repo('credential_keys', options.repositories?.credentialKeys),
     repo('credentials', options.repositories?.credentials),
     audit,
+    now,
+  );
+  const events = new PlatformEventBus(
+    repo('platform_events'),
+    repo('webhooks'),
+    audit,
+    now,
+    masterKey,
+    options.webhookTransport,
+  );
+  const contacts = new ContactLedger(
+    {
+      consents: repo('consents'),
+      suppressions: repo('suppressions'),
+      attempts: repo('contact_attempts'),
+    },
+    audit,
+    options.contactPolicy ?? {
+      async resolve(tenantId, contactId) {
+        const customer = fixtures.customers.find(
+          (row) => row.tenantId === tenantId && row.id === contactId,
+        );
+        if (!customer) return;
+        return {
+          timeZone: 'America/Toronto',
+          destinations: { email: customer.email, sms: customer.phone, voice: customer.phone },
+          historyComplete: true,
+          outreachAllowed: customer.outreachAllowed,
+        };
+      },
+      async nationalDoNotCall(destination) {
+        return destination === '+14165550107';
+      },
+    },
+    now,
+    (tenantId, consent) =>
+      events.appendInTransaction(tenantId, {
+        id: 'withdrawal-' + consent.id,
+        type: 'consent.withdrawn',
+        occurredAt: consent.withdrawnAt!,
+        data: { consentId: consent.id, channel: consent.channel, purpose: consent.purpose },
+      }),
+  );
+  const privacy = new PrivacyService(
+    repo('privacy_requests'),
+    repo('retention_holds'),
+    audit,
+    options.privacy,
     now,
   );
   const billingRepositories = options.repositories?.billing;
@@ -173,6 +237,13 @@ export function createPlatformServices(options: PlatformOptions = {}) {
       providerPrices: [fixtureByoPrice, ...(options.billing?.providerPrices ?? [])],
     },
     (tenantId) => directory.initialPlan(tenantId),
+    (tenantId, { id, finalizedAt }) =>
+      events.appendInTransaction(tenantId, {
+        id: 'finalized-' + id,
+        type: 'invoice.finalized',
+        occurredAt: finalizedAt,
+        data: { invoiceId: id },
+      }),
   );
   const bindings = new CapabilityBindingStore(
     providers,
@@ -181,13 +252,30 @@ export function createPlatformServices(options: PlatformOptions = {}) {
     options.dataClasses,
     vault,
   );
+  const messages = options.fixtureMessages;
+  const purposeFor = (preview: { sourceId: string; customerId: string }) =>
+    preview.sourceId === preview.customerId ? 'marketing' : 'collections';
   const gateway = new PlatformGateway(
-    options.gateway ?? new GovernedGateway({ fixtures, now }),
+    options.gateway ??
+      new GovernedGateway({
+        fixtures,
+        now,
+        providers: messages
+          ? {
+              messages: {
+                email: guardMessageAdapter(contacts, messages.email, purposeFor),
+                voice: guardMessageAdapter(contacts, messages.voice, purposeFor),
+                sms: guardMessageAdapter(contacts, messages.sms, purposeFor),
+              },
+            }
+          : undefined,
+      }),
     directory,
     entitlements,
     audit,
     now,
     options.fixtureUsageBridge === false ? undefined : billing,
+    events,
   );
 
   return {
@@ -197,6 +285,9 @@ export function createPlatformServices(options: PlatformOptions = {}) {
     bindings,
     resolveBinding: bindings.resolveBinding.bind(bindings),
     billing,
+    contacts,
+    privacy,
+    events,
     vault,
     gateway,
     connections: new ConnectionStore(

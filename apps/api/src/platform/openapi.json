@@ -10,6 +10,781 @@
     }
   ],
   "paths": {
+    "/platform/v1/consents": {
+      "get": {
+        "operationId": "listPlatformConsents",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ConsentRecord"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPlatformConsent",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConsentInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/consents/{id}/withdraw": {
+      "post": {
+        "operationId": "withdrawPlatformConsent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ConsentRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/consents/unsubscribe": {
+      "post": {
+        "operationId": "unsubscribePlatformContact",
+        "security": [],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnsubscribeInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "204": {
+            "description": "Accepted"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/suppressions": {
+      "get": {
+        "operationId": "listPlatformSuppressions",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["tenant", "platform"]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/SuppressionRecord"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPlatformSuppression",
+        "parameters": [
+          {
+            "name": "scope",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["tenant", "platform"]
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SuppressionInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SuppressionRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/contact-check": {
+      "post": {
+        "operationId": "checkPlatformContact",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ContactInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ContactDecision"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/privacy-requests": {
+      "get": {
+        "operationId": "listPlatformPrivacyRequests",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PrivacyRequestRecord"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPlatformPrivacyRequest",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivacyRequestInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyRequestRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/privacy-requests/{id}/verify": {
+      "post": {
+        "operationId": "verifyPlatformPrivacyRequest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PrivacyVerificationInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyRequestRecord"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/privacy-requests/{id}/complete": {
+      "post": {
+        "operationId": "completePlatformPrivacyRequest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PrivacyCompletion"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/retention/policies": {
+      "get": {
+        "operationId": "listPlatformRetentionPolicies",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RetentionPolicy"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/retention/dry-run": {
+      "post": {
+        "operationId": "inspectPlatformRetention",
+        "requestBody": {
+          "required": false,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RetentionDryRunInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RetentionDryRun"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/webhooks": {
+      "get": {
+        "operationId": "listPlatformWebhooks",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookRecord"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createPlatformWebhook",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookInput"
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookCreated"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/webhooks/{id}/test": {
+      "post": {
+        "operationId": "testPlatformWebhook",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformEvent"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/webhooks/{id}/deliveries": {
+      "get": {
+        "operationId": "listPlatformWebhookDeliveries",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WebhookDelivery"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/webhooks/deliveries/{id}/replay": {
+      "post": {
+        "operationId": "replayPlatformWebhookDelivery",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Queued",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebhookDelivery"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/notifications": {
+      "get": {
+        "operationId": "listPlatformNotifications",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/PlatformNotification"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/notifications/{id}/read": {
+      "post": {
+        "operationId": "readPlatformNotification",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "$ref": "#/components/schemas/Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlatformNotification"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
     "/platform/v1/me": {
       "get": {
         "operationId": "getPlatformIdentity",
@@ -1827,6 +2602,959 @@
       }
     },
     "schemas": {
+      "ContactInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contactId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "channel": {
+            "type": "string",
+            "enum": ["email", "sms", "voice"]
+          },
+          "purpose": {
+            "type": "string",
+            "enum": ["marketing", "collections", "transactional"]
+          }
+        },
+        "required": ["contactId", "channel", "purpose"]
+      },
+      "ConsentInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contactId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "channel": {
+            "type": "string",
+            "enum": ["email", "sms", "voice"]
+          },
+          "purpose": {
+            "type": "string",
+            "enum": ["marketing", "collections", "transactional"]
+          },
+          "basis": {
+            "type": "string",
+            "enum": ["express", "implied"]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "evidenceRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["contactId", "channel", "purpose", "basis", "source", "evidenceRef"]
+      },
+      "ConsentRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contactId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "channel": {
+            "type": "string",
+            "enum": ["email", "sms", "voice"]
+          },
+          "purpose": {
+            "type": "string",
+            "enum": ["marketing", "collections", "transactional"]
+          },
+          "basis": {
+            "type": "string",
+            "enum": ["express", "implied"]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "evidenceRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "withdrawnAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "contactId",
+          "channel",
+          "purpose",
+          "basis",
+          "source",
+          "evidenceRef",
+          "id",
+          "destination",
+          "grantedAt"
+        ]
+      },
+      "ConsentCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "contactId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "channel": {
+            "type": "string",
+            "enum": ["email", "sms", "voice"]
+          },
+          "purpose": {
+            "type": "string",
+            "enum": ["marketing", "collections", "transactional"]
+          },
+          "basis": {
+            "type": "string",
+            "enum": ["express", "implied"]
+          },
+          "source": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 128
+          },
+          "evidenceRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          },
+          "expiresAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "destination": {
+            "type": "string"
+          },
+          "grantedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "withdrawnAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "unsubscribeToken": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          }
+        },
+        "required": [
+          "contactId",
+          "channel",
+          "purpose",
+          "basis",
+          "source",
+          "evidenceRef",
+          "id",
+          "destination",
+          "grantedAt",
+          "unsubscribeToken"
+        ]
+      },
+      "UnsubscribeInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "consentId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "token": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          }
+        },
+        "required": ["tenantId", "consentId", "token"]
+      },
+      "SuppressionQuery": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "scope": {
+            "type": "string",
+            "enum": ["tenant", "platform"]
+          }
+        }
+      },
+      "SuppressionInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": ["email", "sms", "voice"]
+          },
+          "destination": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["opt_out", "do_not_contact", "policy"]
+          }
+        },
+        "required": ["channel", "destination", "reason"]
+      },
+      "SuppressionRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "channel": {
+            "type": "string",
+            "enum": ["email", "sms", "voice"]
+          },
+          "destination": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320
+          },
+          "reason": {
+            "type": "string",
+            "enum": ["opt_out", "do_not_contact", "policy"]
+          },
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["channel", "destination", "reason", "id", "createdAt"]
+      },
+      "ContactDecision": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allow": {
+                "const": true
+              },
+              "reasons": {
+                "type": "array",
+                "maxItems": 0
+              },
+              "consentId": {
+                "$ref": "#/components/schemas/Id"
+              }
+            },
+            "required": ["allow", "reasons", "consentId"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "allow": {
+                "const": false
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "platform_suppression",
+                    "tenant_suppression",
+                    "national_do_not_call",
+                    "contact_unavailable",
+                    "contact_blocked",
+                    "history_incomplete",
+                    "withdrawn",
+                    "consent_missing",
+                    "consent_expired",
+                    "express_required",
+                    "outside_contact_window",
+                    "contact_cap"
+                  ]
+                },
+                "minItems": 1
+              }
+            },
+            "required": ["allow", "reasons"]
+          }
+        ]
+      },
+      "PrivacyRequestInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "subjectId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["access", "export", "deletion"]
+          }
+        },
+        "required": ["subjectId", "kind"]
+      },
+      "PrivacyVerificationInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "proofRef": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 256
+          }
+        },
+        "required": ["proofRef"]
+      },
+      "PrivacyRequestRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "subjectId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "kind": {
+            "type": "string",
+            "enum": ["access", "export", "deletion"]
+          },
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["pending_verification", "verified", "retention_blocked", "completed"]
+          },
+          "dueAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "status": {
+                  "type": "string",
+                  "enum": ["pending_verification", "verified", "retention_blocked", "completed"]
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "actorId": {
+                  "$ref": "#/components/schemas/Id"
+                }
+              },
+              "required": ["status", "at", "actorId"]
+            }
+          },
+          "deletion": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "deleted": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "blocked": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "recordType": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "id": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "reasons": {
+                      "type": "array",
+                      "items": {
+                        "type": "string",
+                        "enum": ["hold", "unclassified", "minimum_retention"]
+                      }
+                    }
+                  },
+                  "required": ["recordType", "id", "reasons"]
+                }
+              }
+            },
+            "required": ["deleted", "blocked"]
+          }
+        },
+        "required": ["subjectId", "kind", "id", "status", "dueAt", "history"]
+      },
+      "PrivacyCompletion": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "request": {
+            "$ref": "#/components/schemas/PrivacyRequestRecord"
+          },
+          "bundle": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "version": {
+                "const": "v1"
+              },
+              "subjectId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "generatedAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "records": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "id": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "recordType": {
+                      "$ref": "#/components/schemas/Id"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "dataClass": {
+                      "type": "string",
+                      "enum": ["public", "internal", "personal", "sensitive", "financial"]
+                    },
+                    "fields": {
+                      "type": "object"
+                    }
+                  },
+                  "required": ["id", "recordType", "version", "dataClass", "fields"]
+                }
+              }
+            },
+            "required": ["version", "subjectId", "generatedAt", "records"]
+          }
+        },
+        "required": ["request"]
+      },
+      "RetentionPolicy": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "dataClass": {
+            "type": "string",
+            "enum": ["public", "internal", "personal", "sensitive", "financial"]
+          },
+          "purgeAfterDays": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "minimumRetentionDays": {
+            "type": "integer",
+            "minimum": 0
+          }
+        },
+        "required": ["dataClass", "purgeAfterDays", "minimumRetentionDays"]
+      },
+      "RetentionDryRunInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "RetentionDryRun": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "id": {
+                  "$ref": "#/components/schemas/Id"
+                },
+                "recordType": {
+                  "$ref": "#/components/schemas/Id"
+                },
+                "version": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string",
+                  "enum": ["held", "unclassified", "eligible", "scheduled"]
+                },
+                "purgeAt": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "holdIds": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                }
+              },
+              "required": ["id", "recordType", "version", "status", "purgeAt", "holdIds"]
+            }
+          }
+        },
+        "required": ["asOf", "items"]
+      },
+      "WebhookInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "record.changed",
+                "approval.requested",
+                "approval.decided",
+                "workflow.run.settled",
+                "invoice.finalized",
+                "consent.withdrawn"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 6,
+            "uniqueItems": true
+          }
+        },
+        "required": ["url", "events"]
+      },
+      "WebhookRecord": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "record.changed",
+                "approval.requested",
+                "approval.decided",
+                "workflow.run.settled",
+                "invoice.finalized",
+                "consent.withdrawn"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 6,
+            "uniqueItems": true
+          },
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["url", "events", "id", "createdAt"]
+      },
+      "WebhookCreated": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "url": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2048
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "record.changed",
+                "approval.requested",
+                "approval.decided",
+                "workflow.run.settled",
+                "invoice.finalized",
+                "consent.withdrawn"
+              ]
+            },
+            "minItems": 1,
+            "maxItems": 6,
+            "uniqueItems": true
+          },
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "createdAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "signingSecret": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{43}$"
+          }
+        },
+        "required": ["url", "events", "id", "createdAt", "signingSecret"]
+      },
+      "PlatformEvent": {
+        "oneOf": [
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "tenantId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "type": {
+                "const": "record.changed"
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "recordType": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "recordId": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "change": {
+                    "type": "string",
+                    "enum": ["created", "updated", "deleted"]
+                  }
+                },
+                "required": ["recordType", "recordId", "change"]
+              }
+            },
+            "required": ["id", "tenantId", "occurredAt", "type", "data"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "tenantId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "type": {
+                "const": "approval.requested"
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "approvalId": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": ["approvalId"]
+              }
+            },
+            "required": ["id", "tenantId", "occurredAt", "type", "data"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "tenantId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "type": {
+                "const": "approval.decided"
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "approvalId": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "decision": {
+                    "type": "string",
+                    "enum": ["approved", "rejected"]
+                  }
+                },
+                "required": ["approvalId", "decision"]
+              }
+            },
+            "required": ["id", "tenantId", "occurredAt", "type", "data"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "tenantId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "type": {
+                "const": "workflow.run.settled"
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "runId": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "status": {
+                    "type": "string",
+                    "enum": ["succeeded", "failed", "cancelled"]
+                  }
+                },
+                "required": ["runId", "status"]
+              }
+            },
+            "required": ["id", "tenantId", "occurredAt", "type", "data"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "tenantId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "type": {
+                "const": "invoice.finalized"
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "invoiceId": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": ["invoiceId"]
+              }
+            },
+            "required": ["id", "tenantId", "occurredAt", "type", "data"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "tenantId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "type": {
+                "const": "consent.withdrawn"
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "consentId": {
+                    "$ref": "#/components/schemas/Id"
+                  },
+                  "channel": {
+                    "type": "string",
+                    "enum": ["email", "sms", "voice"]
+                  },
+                  "purpose": {
+                    "type": "string",
+                    "enum": ["marketing", "collections", "transactional"]
+                  }
+                },
+                "required": ["consentId", "channel", "purpose"]
+              }
+            },
+            "required": ["id", "tenantId", "occurredAt", "type", "data"]
+          },
+          {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "tenantId": {
+                "$ref": "#/components/schemas/Id"
+              },
+              "occurredAt": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "type": {
+                "const": "webhook.test"
+              },
+              "data": {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "webhookId": {
+                    "$ref": "#/components/schemas/Id"
+                  }
+                },
+                "required": ["webhookId"]
+              }
+            },
+            "required": ["id", "tenantId", "occurredAt", "type", "data"]
+          }
+        ]
+      },
+      "WebhookDelivery": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "eventId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "webhookId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "status": {
+            "type": "string",
+            "enum": ["queued", "sending", "retry", "delivered", "dead"]
+          },
+          "nextAttemptAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "replayOf": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "replayId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "attempts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "number": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "at": {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": ["sending", "retry", "delivered", "dead"]
+                },
+                "statusCode": {
+                  "type": "integer",
+                  "minimum": 100,
+                  "maximum": 599
+                }
+              },
+              "required": ["number", "at", "outcome"]
+            }
+          }
+        },
+        "required": ["id", "eventId", "webhookId", "status", "attempts"]
+      },
+      "PlatformNotification": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "event": {
+            "$ref": "#/components/schemas/PlatformEvent"
+          },
+          "readAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": ["id", "event"]
+      },
       "Id": {
         "type": "string",
         "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
