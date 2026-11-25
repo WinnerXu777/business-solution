@@ -1,0 +1,3534 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Distributor tools",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/v1/tools/order.read": {
+      "post": {
+        "operationId": "ReadOrder",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadOrderResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/customer.read": {
+      "post": {
+        "operationId": "ReadCustomer",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadCustomerRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadCustomerResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/invoice.read": {
+      "post": {
+        "operationId": "ReadInvoice",
+        "tags": [
+          "records"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadInvoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadInvoiceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/purchase.request.read": {
+      "post": {
+        "operationId": "ReadPurchaseRequest",
+        "tags": [
+          "procurement"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ReadPurchaseRequestRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadPurchaseRequestResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/purchase.order.draft": {
+      "post": {
+        "operationId": "DraftPurchaseOrder",
+        "tags": [
+          "procurement"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftPurchaseOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftPurchaseOrderResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/purchase.order.approve": {
+      "post": {
+        "operationId": "ApprovePurchaseOrder",
+        "tags": [
+          "procurement"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovePurchaseOrderRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovePurchaseOrderResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/collections.email.draft": {
+      "post": {
+        "operationId": "DraftCollectionsEmail",
+        "tags": [
+          "collections"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DraftCollectionsEmailRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DraftCollectionsEmailResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/message.preview": {
+      "post": {
+        "operationId": "PreviewMessage",
+        "tags": [
+          "collections"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PreviewMessageRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewMessageResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/collections.email.send": {
+      "post": {
+        "operationId": "SendEmail",
+        "tags": [
+          "collections"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendEmailRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendEmailResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/collections.voice.send": {
+      "post": {
+        "operationId": "SendVoice",
+        "tags": [
+          "collections"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendVoiceRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendVoiceResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/collections.sms.send": {
+      "post": {
+        "operationId": "SendSms",
+        "tags": [
+          "collections"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendSmsRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendSmsResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/workflow.template.run": {
+      "post": {
+        "operationId": "RunWorkflowTemplate",
+        "tags": [
+          "workflows"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunWorkflowTemplateRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunWorkflowTemplateResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/fraud.score": {
+      "post": {
+        "operationId": "ScoreFraud",
+        "tags": [
+          "insights"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScoreFraudRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScoreFraudResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/forecast.run": {
+      "post": {
+        "operationId": "RunForecast",
+        "tags": [
+          "insights"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunForecastRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunForecastResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/profile.run": {
+      "post": {
+        "operationId": "RunProfile",
+        "tags": [
+          "insights"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunProfileRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunProfileResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/chat.run": {
+      "post": {
+        "operationId": "RunChat",
+        "tags": [
+          "ai"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RunChatRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunChatResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    },
+    "/v1/tools/llm.complete": {
+      "post": {
+        "operationId": "CompleteLlm",
+        "tags": [
+          "ai"
+        ],
+        "description": "The transport verifies tenant and actor claims against the authenticated identity.",
+        "security": [
+          {
+            "bearerAuth": []
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteLlmRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Tool result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CompleteLlmResult"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Invalid envelope or tool input"
+          },
+          "401": {
+            "description": "Missing or invalid bearer credentials"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer"
+      }
+    },
+    "schemas": {
+      "Id": {
+        "type": "string",
+        "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+      },
+      "Timestamp": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,3})?Z$"
+      },
+      "DateValue": {
+        "type": "string",
+        "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+      },
+      "Count": {
+        "type": "integer",
+        "minimum": 0,
+        "maximum": 9007199254740991
+      },
+      "Actor": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "kind": {
+            "enum": [
+              "person",
+              "service"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "kind"
+        ]
+      },
+      "CallEnvelope": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "version": {
+            "enum": [
+              "v1"
+            ]
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "source": {
+            "enum": [
+              "portal",
+              "rest",
+              "mcp",
+              "chat",
+              "browser_voice",
+              "workflow",
+              "worker"
+            ]
+          },
+          "traceId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "idempotencyKey": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "version",
+          "tenantId",
+          "actor",
+          "source",
+          "traceId",
+          "correlationId",
+          "idempotencyKey"
+        ]
+      },
+      "ApprovalAction": {
+        "enum": [
+          "purchase.order.approve",
+          "collections.email.send",
+          "collections.voice.send",
+          "collections.sms.send",
+          "workflow.template.run"
+        ]
+      },
+      "Approval": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "requestedBy": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "approverId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tool": {
+            "$ref": "#/components/schemas/ApprovalAction"
+          },
+          "subjectId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "materialHash": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "sourceVersion": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "policyVersion": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "expiresAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "state": {
+            "enum": [
+              "pending",
+              "approved",
+              "denied",
+              "consumed"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "requestedBy",
+          "approverId",
+          "tool",
+          "subjectId",
+          "materialHash",
+          "sourceVersion",
+          "policyVersion",
+          "expiresAt",
+          "state"
+        ]
+      },
+      "PendingApproval": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "pending_approval"
+            ]
+          },
+          "approval": {
+            "$ref": "#/components/schemas/Approval"
+          }
+        },
+        "required": [
+          "state",
+          "approval"
+        ]
+      },
+      "Denied": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "denied"
+            ]
+          },
+          "code": {
+            "enum": [
+              "forbidden",
+              "not_found",
+              "module_disabled",
+              "quota_exceeded",
+              "invalid_approval",
+              "suppressed",
+              "idempotency_conflict"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "state",
+          "code",
+          "message"
+        ]
+      },
+      "Failed": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "failed"
+            ]
+          },
+          "code": {
+            "enum": [
+              "invalid_input",
+              "provider_error",
+              "unavailable"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "retryable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "state",
+          "code",
+          "message",
+          "retryable"
+        ]
+      },
+      "Unknown": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "unknown"
+            ]
+          },
+          "actionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "state",
+          "actionId",
+          "message"
+        ]
+      },
+      "ModuleId": {
+        "enum": [
+          "records",
+          "procurement",
+          "collections",
+          "workflows",
+          "insights",
+          "ai"
+        ]
+      },
+      "UsageUnit": {
+        "enum": [
+          "actions",
+          "messages",
+          "tokens",
+          "audio_seconds"
+        ]
+      },
+      "AuditEntry": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "source": {
+            "enum": [
+              "portal",
+              "rest",
+              "mcp",
+              "chat",
+              "browser_voice",
+              "workflow",
+              "worker"
+            ]
+          },
+          "tool": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "traceId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "correlationId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "actionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "policyVersion": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "state": {
+            "enum": [
+              "ok",
+              "pending_approval",
+              "denied",
+              "failed",
+              "unknown"
+            ]
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "actor",
+          "source",
+          "tool",
+          "traceId",
+          "correlationId",
+          "actionId",
+          "policyVersion",
+          "state",
+          "occurredAt"
+        ]
+      },
+      "UsageCounterEvent": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "module": {
+            "$ref": "#/components/schemas/ModuleId"
+          },
+          "outcomeId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/UsageUnit"
+          },
+          "quantity": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "occurredAt": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "module",
+          "outcomeId",
+          "unit",
+          "quantity",
+          "occurredAt"
+        ]
+      },
+      "ModuleFlag": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "module": {
+            "$ref": "#/components/schemas/ModuleId"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "module",
+          "enabled"
+        ]
+      },
+      "Entitlement": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "flag": {
+            "$ref": "#/components/schemas/ModuleFlag"
+          },
+          "unit": {
+            "$ref": "#/components/schemas/UsageUnit"
+          },
+          "allowance": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "windowStart": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "windowEnd": {
+            "$ref": "#/components/schemas/Timestamp"
+          }
+        },
+        "required": [
+          "tenantId",
+          "flag",
+          "unit",
+          "allowance",
+          "windowStart",
+          "windowEnd"
+        ]
+      },
+      "LlmRoute": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "native",
+              "byo"
+            ]
+          },
+          "providerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "fixtureMode": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "kind",
+          "providerId",
+          "fixtureMode"
+        ]
+      },
+      "Customer": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "email": {
+            "type": "string",
+            "minLength": 1
+          },
+          "phone": {
+            "type": "string",
+            "minLength": 1
+          },
+          "lastOrderOn": {
+            "$ref": "#/components/schemas/DateValue"
+          },
+          "outreachAllowed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "version",
+          "name",
+          "email",
+          "phone",
+          "lastOrderOn",
+          "outreachAllowed"
+        ]
+      },
+      "Sku": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "onHand": {
+            "$ref": "#/components/schemas/Count"
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "name",
+          "onHand"
+        ]
+      },
+      "Vendor": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "name"
+        ]
+      },
+      "OrderLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "skuId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": [
+          "skuId",
+          "quantity"
+        ]
+      },
+      "Order": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "placedOn": {
+            "$ref": "#/components/schemas/DateValue"
+          },
+          "status": {
+            "enum": [
+              "open",
+              "fulfilled",
+              "held"
+            ]
+          },
+          "totalCents": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "currency": {
+            "enum": [
+              "CAD"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderLine"
+            }
+          },
+          "signals": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "minLength": 1
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "version",
+          "customerId",
+          "placedOn",
+          "status",
+          "totalCents",
+          "currency",
+          "lines",
+          "signals"
+        ]
+      },
+      "Invoice": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "dueOn": {
+            "$ref": "#/components/schemas/DateValue"
+          },
+          "balanceCents": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "currency": {
+            "enum": [
+              "CAD"
+            ]
+          },
+          "status": {
+            "enum": [
+              "open",
+              "overdue",
+              "paid",
+              "disputed"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "version",
+          "customerId",
+          "orderId",
+          "dueOn",
+          "balanceCents",
+          "currency",
+          "status"
+        ]
+      },
+      "PurchaseLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "skuId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9007199254740991
+          },
+          "unitCostCents": {
+            "$ref": "#/components/schemas/Count"
+          }
+        },
+        "required": [
+          "skuId",
+          "quantity",
+          "unitCostCents"
+        ]
+      },
+      "PurchaseRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "version": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "vendorId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "costCentre": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "currency": {
+            "enum": [
+              "CAD"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "version",
+          "vendorId",
+          "costCentre",
+          "currency",
+          "lines"
+        ]
+      },
+      "PurchaseOrderDraft": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "requestId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sourceVersion": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "vendorId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "costCentre": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "currency": {
+            "enum": [
+              "CAD"
+            ]
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseLine"
+            }
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "requestId",
+          "sourceVersion",
+          "vendorId",
+          "costCentre",
+          "currency",
+          "lines"
+        ]
+      },
+      "PurchaseOrder": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "draft": {
+            "$ref": "#/components/schemas/PurchaseOrderDraft"
+          },
+          "approvalId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "status": {
+            "enum": [
+              "approved"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "draft",
+          "approvalId",
+          "status"
+        ]
+      },
+      "MessageChannel": {
+        "enum": [
+          "email",
+          "voice",
+          "sms"
+        ]
+      },
+      "MessagePreview": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/MessageChannel"
+          },
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "customerVersion": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "recipient": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sourceId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "sourceVersion": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "subject": {
+            "anyOf": [
+              {
+                "type": "string",
+                "minLength": 1
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "body": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "tenantId",
+          "channel",
+          "customerId",
+          "customerVersion",
+          "recipient",
+          "sourceId",
+          "sourceVersion",
+          "subject",
+          "body"
+        ]
+      },
+      "DeliveryReceipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/MessageChannel"
+          },
+          "status": {
+            "enum": [
+              "simulated",
+              "captured"
+            ]
+          },
+          "providerId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "id",
+          "channel",
+          "status",
+          "providerId"
+        ]
+      },
+      "MessageSendInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "previewId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "approvalId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "previewId",
+          "approvalId"
+        ]
+      },
+      "ForecastPoint": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "weekOf": {
+            "$ref": "#/components/schemas/DateValue"
+          },
+          "estimate": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "lower": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "upper": {
+            "$ref": "#/components/schemas/Count"
+          }
+        },
+        "required": [
+          "weekOf",
+          "estimate",
+          "lower",
+          "upper"
+        ]
+      },
+      "Turn": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "role": {
+            "enum": [
+              "user",
+              "assistant"
+            ]
+          },
+          "content": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "role",
+          "content"
+        ]
+      },
+      "ActorGrant": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "tenantId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "actor": {
+            "$ref": "#/components/schemas/Actor"
+          },
+          "role": {
+            "enum": [
+              "operator",
+              "approver",
+              "reader"
+            ]
+          }
+        },
+        "required": [
+          "tenantId",
+          "actor",
+          "role"
+        ]
+      },
+      "ChatAudioFixture": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "transcript": {
+            "type": "string",
+            "minLength": 1
+          },
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "id",
+          "transcript",
+          "orderId"
+        ]
+      },
+      "Workspace": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "city": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "required": [
+          "id",
+          "name",
+          "city"
+        ]
+      },
+      "DemoFixtures": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "asOf": {
+            "$ref": "#/components/schemas/Timestamp"
+          },
+          "workspaces": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Workspace"
+            }
+          },
+          "grants": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActorGrant"
+            }
+          },
+          "customers": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Customer"
+            }
+          },
+          "skus": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Sku"
+            }
+          },
+          "vendors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Vendor"
+            }
+          },
+          "orders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Order"
+            }
+          },
+          "invoices": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Invoice"
+            }
+          },
+          "purchaseRequests": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PurchaseRequest"
+            }
+          },
+          "llmRoutes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/LlmRoute"
+            }
+          },
+          "entitlements": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Entitlement"
+            }
+          },
+          "audio": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ChatAudioFixture"
+            }
+          }
+        },
+        "required": [
+          "asOf",
+          "workspaces",
+          "grants",
+          "customers",
+          "skus",
+          "vendors",
+          "orders",
+          "invoices",
+          "purchaseRequests",
+          "llmRoutes",
+          "entitlements",
+          "audio"
+        ]
+      },
+      "ReadOrderInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "orderId"
+        ]
+      },
+      "ReadOrderRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "order.read"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReadOrderInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ReadOrderOutput": {
+        "$ref": "#/components/schemas/Order"
+      },
+      "ReadOrderOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ReadOrderOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ReadOrderResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadOrderOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ReadCustomerInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "customerId"
+        ]
+      },
+      "ReadCustomerRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "customer.read"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReadCustomerInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ReadCustomerOutput": {
+        "$ref": "#/components/schemas/Customer"
+      },
+      "ReadCustomerOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ReadCustomerOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ReadCustomerResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadCustomerOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ReadInvoiceInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "invoiceId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "invoiceId"
+        ]
+      },
+      "ReadInvoiceRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "invoice.read"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReadInvoiceInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ReadInvoiceOutput": {
+        "$ref": "#/components/schemas/Invoice"
+      },
+      "ReadInvoiceOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ReadInvoiceOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ReadInvoiceResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadInvoiceOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ReadPurchaseRequestInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "requestId"
+        ]
+      },
+      "ReadPurchaseRequestRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "purchase.request.read"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ReadPurchaseRequestInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ReadPurchaseRequestOutput": {
+        "$ref": "#/components/schemas/PurchaseRequest"
+      },
+      "ReadPurchaseRequestOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ReadPurchaseRequestOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ReadPurchaseRequestResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadPurchaseRequestOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "DraftPurchaseOrderInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "requestId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "requestId"
+        ]
+      },
+      "DraftPurchaseOrderRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "purchase.order.draft"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/DraftPurchaseOrderInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "DraftPurchaseOrderOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/PurchaseOrderDraft"
+          },
+          "approval": {
+            "$ref": "#/components/schemas/Approval"
+          }
+        },
+        "required": [
+          "draft",
+          "approval"
+        ]
+      },
+      "DraftPurchaseOrderOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/DraftPurchaseOrderOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "DraftPurchaseOrderResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/DraftPurchaseOrderOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ApprovePurchaseOrderInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "draftId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "approvalId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "draftId",
+          "approvalId"
+        ]
+      },
+      "ApprovePurchaseOrderRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "purchase.order.approve"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ApprovePurchaseOrderInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ApprovePurchaseOrderOutput": {
+        "$ref": "#/components/schemas/PurchaseOrder"
+      },
+      "ApprovePurchaseOrderOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ApprovePurchaseOrderOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ApprovePurchaseOrderResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ApprovePurchaseOrderOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "DraftCollectionsEmailInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "invoiceId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "invoiceId"
+        ]
+      },
+      "DraftCollectionsEmailRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "collections.email.draft"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/DraftCollectionsEmailInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "DraftCollectionsEmailOutput": {
+        "$ref": "#/components/schemas/MessagePreview"
+      },
+      "DraftCollectionsEmailOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/DraftCollectionsEmailOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "DraftCollectionsEmailResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/DraftCollectionsEmailOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "PreviewMessageInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "invoiceId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "channel": {
+            "$ref": "#/components/schemas/MessageChannel"
+          }
+        },
+        "required": [
+          "invoiceId",
+          "channel"
+        ]
+      },
+      "PreviewMessageRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "message.preview"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/PreviewMessageInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "PreviewMessageOutput": {
+        "$ref": "#/components/schemas/MessagePreview"
+      },
+      "PreviewMessageOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/PreviewMessageOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "PreviewMessageResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/PreviewMessageOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "SendEmailInput": {
+        "$ref": "#/components/schemas/MessageSendInput"
+      },
+      "SendEmailRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "collections.email.send"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/SendEmailInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "SendEmailOutput": {
+        "$ref": "#/components/schemas/DeliveryReceipt"
+      },
+      "SendEmailOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/SendEmailOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "SendEmailResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SendEmailOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "SendVoiceInput": {
+        "$ref": "#/components/schemas/MessageSendInput"
+      },
+      "SendVoiceRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "collections.voice.send"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/SendVoiceInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "SendVoiceOutput": {
+        "$ref": "#/components/schemas/DeliveryReceipt"
+      },
+      "SendVoiceOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/SendVoiceOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "SendVoiceResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SendVoiceOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "SendSmsInput": {
+        "$ref": "#/components/schemas/MessageSendInput"
+      },
+      "SendSmsRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "collections.sms.send"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/SendSmsInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "SendSmsOutput": {
+        "$ref": "#/components/schemas/DeliveryReceipt"
+      },
+      "SendSmsOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/SendSmsOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "SendSmsResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/SendSmsOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "RunWorkflowTemplateInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "templateId": {
+            "enum": [
+              "win-back-v1"
+            ]
+          },
+          "mode": {
+            "enum": [
+              "preview",
+              "run"
+            ]
+          },
+          "approvalId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "templateId",
+          "mode",
+          "approvalId"
+        ]
+      },
+      "RunWorkflowTemplateRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "workflow.template.run"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/RunWorkflowTemplateInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "RunWorkflowTemplateOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "runId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "templateId": {
+            "enum": [
+              "win-back-v1"
+            ]
+          },
+          "status": {
+            "enum": [
+              "previewed",
+              "simulated"
+            ]
+          },
+          "previews": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/MessagePreview"
+            }
+          },
+          "receipts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DeliveryReceipt"
+            }
+          }
+        },
+        "required": [
+          "runId",
+          "templateId",
+          "status",
+          "previews",
+          "receipts"
+        ]
+      },
+      "RunWorkflowTemplateOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/RunWorkflowTemplateOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "RunWorkflowTemplateResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RunWorkflowTemplateOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ScoreFraudInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "orderId"
+        ]
+      },
+      "ScoreFraudRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "fraud.score"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/ScoreFraudInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "ScoreFraudOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "orderId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "rule": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "reasons": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "version": {
+                "$ref": "#/components/schemas/Id"
+              }
+            },
+            "required": [
+              "score",
+              "reasons",
+              "version"
+            ]
+          },
+          "model": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "score": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "artifactId": {
+                "$ref": "#/components/schemas/Id"
+              }
+            },
+            "required": [
+              "score",
+              "artifactId"
+            ]
+          },
+          "disposition": {
+            "enum": [
+              "review",
+              "pass"
+            ]
+          }
+        },
+        "required": [
+          "orderId",
+          "rule",
+          "model",
+          "disposition"
+        ]
+      },
+      "ScoreFraudOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/ScoreFraudOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "ScoreFraudResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ScoreFraudOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "RunForecastInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "series": {
+            "enum": [
+              "weekly_sales",
+              "sku_demand"
+            ]
+          },
+          "skuId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "horizonWeeks": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 12
+          }
+        },
+        "required": [
+          "series",
+          "skuId",
+          "horizonWeeks"
+        ]
+      },
+      "RunForecastRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "forecast.run"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/RunForecastInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "RunForecastOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "enum": [
+              "fixture",
+              "insufficient_history"
+            ]
+          },
+          "unit": {
+            "enum": [
+              "cents",
+              "items"
+            ]
+          },
+          "artifactId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "points": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ForecastPoint"
+            }
+          }
+        },
+        "required": [
+          "status",
+          "unit",
+          "artifactId",
+          "points"
+        ]
+      },
+      "RunForecastOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/RunForecastOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "RunForecastResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RunForecastOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "RunProfileInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          }
+        },
+        "required": [
+          "customerId"
+        ]
+      },
+      "RunProfileRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "profile.run"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/RunProfileInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "RunProfileOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "customerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "segment": {
+            "enum": [
+              "active",
+              "win_back",
+              "abstain"
+            ]
+          },
+          "evidenceIds": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Id"
+            }
+          },
+          "artifactId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "reviewRequired": {
+            "enum": [
+              true
+            ]
+          }
+        },
+        "required": [
+          "customerId",
+          "segment",
+          "evidenceIds",
+          "artifactId",
+          "reviewRequired"
+        ]
+      },
+      "RunProfileOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/RunProfileOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "RunProfileResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RunProfileOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "RunChatInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            }
+          },
+          "orderId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "audioFixtureId": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Id"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "route": {
+            "$ref": "#/components/schemas/LlmRoute"
+          }
+        },
+        "required": [
+          "sessionId",
+          "turns",
+          "orderId",
+          "audioFixtureId",
+          "route"
+        ]
+      },
+      "RunChatRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "chat.run"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/RunChatInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "RunChatOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "reply": {
+            "type": "string",
+            "minLength": 1
+          },
+          "order": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Order"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "handoff": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sessionId",
+          "reply",
+          "order",
+          "handoff"
+        ]
+      },
+      "RunChatOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/RunChatOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "RunChatResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/RunChatOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "CompleteLlmInput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "model": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "turns": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Turn"
+            }
+          },
+          "maxOutputTokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 4096
+          },
+          "route": {
+            "$ref": "#/components/schemas/LlmRoute"
+          }
+        },
+        "required": [
+          "model",
+          "turns",
+          "maxOutputTokens",
+          "route"
+        ]
+      },
+      "CompleteLlmRequest": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "envelope": {
+            "$ref": "#/components/schemas/CallEnvelope"
+          },
+          "tool": {
+            "enum": [
+              "llm.complete"
+            ]
+          },
+          "input": {
+            "$ref": "#/components/schemas/CompleteLlmInput"
+          }
+        },
+        "required": [
+          "envelope",
+          "tool",
+          "input"
+        ]
+      },
+      "CompleteLlmOutput": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "text": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "route": {
+            "$ref": "#/components/schemas/LlmRoute"
+          },
+          "inputTokens": {
+            "$ref": "#/components/schemas/Count"
+          },
+          "outputTokens": {
+            "$ref": "#/components/schemas/Count"
+          }
+        },
+        "required": [
+          "text",
+          "model",
+          "route",
+          "inputTokens",
+          "outputTokens"
+        ]
+      },
+      "CompleteLlmOk": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "state": {
+            "enum": [
+              "ok"
+            ]
+          },
+          "output": {
+            "$ref": "#/components/schemas/CompleteLlmOutput"
+          }
+        },
+        "required": [
+          "state",
+          "output"
+        ]
+      },
+      "CompleteLlmResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/CompleteLlmOk"
+          },
+          {
+            "$ref": "#/components/schemas/PendingApproval"
+          },
+          {
+            "$ref": "#/components/schemas/Denied"
+          },
+          {
+            "$ref": "#/components/schemas/Failed"
+          },
+          {
+            "$ref": "#/components/schemas/Unknown"
+          }
+        ]
+      },
+      "ToolName": {
+        "enum": [
+          "order.read",
+          "customer.read",
+          "invoice.read",
+          "purchase.request.read",
+          "purchase.order.draft",
+          "purchase.order.approve",
+          "collections.email.draft",
+          "message.preview",
+          "collections.email.send",
+          "collections.voice.send",
+          "collections.sms.send",
+          "workflow.template.run",
+          "fraud.score",
+          "forecast.run",
+          "profile.run",
+          "chat.run",
+          "llm.complete"
+        ]
+      },
+      "ToolCall": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadOrderRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ReadCustomerRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ReadInvoiceRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ReadPurchaseRequestRequest"
+          },
+          {
+            "$ref": "#/components/schemas/DraftPurchaseOrderRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ApprovePurchaseOrderRequest"
+          },
+          {
+            "$ref": "#/components/schemas/DraftCollectionsEmailRequest"
+          },
+          {
+            "$ref": "#/components/schemas/PreviewMessageRequest"
+          },
+          {
+            "$ref": "#/components/schemas/SendEmailRequest"
+          },
+          {
+            "$ref": "#/components/schemas/SendVoiceRequest"
+          },
+          {
+            "$ref": "#/components/schemas/SendSmsRequest"
+          },
+          {
+            "$ref": "#/components/schemas/RunWorkflowTemplateRequest"
+          },
+          {
+            "$ref": "#/components/schemas/ScoreFraudRequest"
+          },
+          {
+            "$ref": "#/components/schemas/RunForecastRequest"
+          },
+          {
+            "$ref": "#/components/schemas/RunProfileRequest"
+          },
+          {
+            "$ref": "#/components/schemas/RunChatRequest"
+          },
+          {
+            "$ref": "#/components/schemas/CompleteLlmRequest"
+          }
+        ]
+      },
+      "ToolResult": {
+        "anyOf": [
+          {
+            "$ref": "#/components/schemas/ReadOrderResult"
+          },
+          {
+            "$ref": "#/components/schemas/ReadCustomerResult"
+          },
+          {
+            "$ref": "#/components/schemas/ReadInvoiceResult"
+          },
+          {
+            "$ref": "#/components/schemas/ReadPurchaseRequestResult"
+          },
+          {
+            "$ref": "#/components/schemas/DraftPurchaseOrderResult"
+          },
+          {
+            "$ref": "#/components/schemas/ApprovePurchaseOrderResult"
+          },
+          {
+            "$ref": "#/components/schemas/DraftCollectionsEmailResult"
+          },
+          {
+            "$ref": "#/components/schemas/PreviewMessageResult"
+          },
+          {
+            "$ref": "#/components/schemas/SendEmailResult"
+          },
+          {
+            "$ref": "#/components/schemas/SendVoiceResult"
+          },
+          {
+            "$ref": "#/components/schemas/SendSmsResult"
+          },
+          {
+            "$ref": "#/components/schemas/RunWorkflowTemplateResult"
+          },
+          {
+            "$ref": "#/components/schemas/ScoreFraudResult"
+          },
+          {
+            "$ref": "#/components/schemas/RunForecastResult"
+          },
+          {
+            "$ref": "#/components/schemas/RunProfileResult"
+          },
+          {
+            "$ref": "#/components/schemas/RunChatResult"
+          },
+          {
+            "$ref": "#/components/schemas/CompleteLlmResult"
+          }
+        ]
+      }
+    }
+  }
+}

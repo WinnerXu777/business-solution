@@ -1,0 +1,749 @@
+{
+  "asOf": "2026-11-25T15:00:00Z",
+  "workspaces": [
+    {
+      "id": "tenant-rivetquay",
+      "name": "Rivetquay Industrial Supply",
+      "city": "Toronto"
+    },
+    {
+      "id": "tenant-spoolharbour",
+      "name": "Spoolharbour Test Workspace",
+      "city": "Toronto"
+    }
+  ],
+  "grants": [
+    {
+      "tenantId": "tenant-rivetquay",
+      "actor": {
+        "id": "actor-operator",
+        "kind": "person"
+      },
+      "role": "operator"
+    },
+    {
+      "tenantId": "tenant-rivetquay",
+      "actor": {
+        "id": "actor-approver",
+        "kind": "person"
+      },
+      "role": "approver"
+    },
+    {
+      "tenantId": "tenant-rivetquay",
+      "actor": {
+        "id": "actor-reader",
+        "kind": "person"
+      },
+      "role": "reader"
+    },
+    {
+      "tenantId": "tenant-rivetquay",
+      "actor": {
+        "id": "actor-worker",
+        "kind": "service"
+      },
+      "role": "operator"
+    },
+    {
+      "tenantId": "tenant-spoolharbour",
+      "actor": {
+        "id": "actor-isolation",
+        "kind": "person"
+      },
+      "role": "operator"
+    }
+  ],
+  "customers": [
+    {
+      "id": "cust-001",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Fablegirt Fabrication",
+      "email": "orders1@rivetquay.example",
+      "phone": "+14165550101",
+      "lastOrderOn": "2026-11-20",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-002",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Coppernook Assembly",
+      "email": "orders2@rivetquay.example",
+      "phone": "+14165550102",
+      "lastOrderOn": "2026-11-19",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-003",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Brassfen Machinery",
+      "email": "orders3@rivetquay.example",
+      "phone": "+14165550103",
+      "lastOrderOn": "2026-11-18",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-004",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Kettleweld Tooling",
+      "email": "orders4@rivetquay.example",
+      "phone": "+14165550104",
+      "lastOrderOn": "2026-11-17",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-005",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Tinweft Enclosures",
+      "email": "orders5@rivetquay.example",
+      "phone": "+14165550105",
+      "lastOrderOn": "2026-11-16",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-006",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Gasketmere Controls",
+      "email": "orders6@rivetquay.example",
+      "phone": "+14165550106",
+      "lastOrderOn": "2026-11-15",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-007",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Spindlefern Repair",
+      "email": "orders7@rivetquay.example",
+      "phone": "+14165550107",
+      "lastOrderOn": "2026-11-14",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-008",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Boltmarsh Works",
+      "email": "orders8@rivetquay.example",
+      "phone": "+14165550108",
+      "lastOrderOn": "2026-03-16",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-009",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Clamporchard Mechanical",
+      "email": "orders9@rivetquay.example",
+      "phone": "+14165550109",
+      "lastOrderOn": "2026-03-16",
+      "outreachAllowed": true
+    },
+    {
+      "id": "cust-010",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "name": "Sprocketvale Lab",
+      "email": "orders10@rivetquay.example",
+      "phone": "+14165550110",
+      "lastOrderOn": "2026-03-16",
+      "outreachAllowed": false
+    },
+    {
+      "id": "cust-isolation",
+      "tenantId": "tenant-spoolharbour",
+      "version": 1,
+      "name": "Fictitious Seal Loom",
+      "email": "isolation@spoolharbour.example",
+      "phone": "+14165550199",
+      "lastOrderOn": "2026-11-20",
+      "outreachAllowed": false
+    }
+  ],
+  "skus": [
+    {
+      "id": "sku-001",
+      "tenantId": "tenant-rivetquay",
+      "name": "Nitrile gloves",
+      "onHand": 5
+    },
+    {
+      "id": "sku-002",
+      "tenantId": "tenant-rivetquay",
+      "name": "Face shield",
+      "onHand": 27
+    },
+    {
+      "id": "sku-003",
+      "tenantId": "tenant-rivetquay",
+      "name": "Foam earplugs",
+      "onHand": 34
+    },
+    {
+      "id": "sku-004",
+      "tenantId": "tenant-rivetquay",
+      "name": "Safety goggles",
+      "onHand": 41
+    },
+    {
+      "id": "sku-005",
+      "tenantId": "tenant-rivetquay",
+      "name": "Cut-resistant gloves",
+      "onHand": 48
+    },
+    {
+      "id": "sku-006",
+      "tenantId": "tenant-rivetquay",
+      "name": "Hex bolts M8",
+      "onHand": 55
+    },
+    {
+      "id": "sku-007",
+      "tenantId": "tenant-rivetquay",
+      "name": "Hex bolts M10",
+      "onHand": 62
+    },
+    {
+      "id": "sku-008",
+      "tenantId": "tenant-rivetquay",
+      "name": "Lock nuts M8",
+      "onHand": 69
+    },
+    {
+      "id": "sku-009",
+      "tenantId": "tenant-rivetquay",
+      "name": "Flat washers M10",
+      "onHand": 76
+    },
+    {
+      "id": "sku-010",
+      "tenantId": "tenant-rivetquay",
+      "name": "Threadlocker",
+      "onHand": 83
+    },
+    {
+      "id": "sku-011",
+      "tenantId": "tenant-rivetquay",
+      "name": "Hose clamps",
+      "onHand": 90
+    },
+    {
+      "id": "sku-012",
+      "tenantId": "tenant-rivetquay",
+      "name": "Air hose",
+      "onHand": 97
+    },
+    {
+      "id": "sku-013",
+      "tenantId": "tenant-rivetquay",
+      "name": "Brass coupling",
+      "onHand": 104
+    },
+    {
+      "id": "sku-014",
+      "tenantId": "tenant-rivetquay",
+      "name": "Pressure gauge",
+      "onHand": 111
+    },
+    {
+      "id": "sku-015",
+      "tenantId": "tenant-rivetquay",
+      "name": "Nylon tubing",
+      "onHand": 118
+    },
+    {
+      "id": "sku-016",
+      "tenantId": "tenant-rivetquay",
+      "name": "O-ring kit",
+      "onHand": 125
+    },
+    {
+      "id": "sku-017",
+      "tenantId": "tenant-rivetquay",
+      "name": "Filter cartridge",
+      "onHand": 132
+    },
+    {
+      "id": "sku-018",
+      "tenantId": "tenant-rivetquay",
+      "name": "Bearing grease",
+      "onHand": 139
+    },
+    {
+      "id": "sku-019",
+      "tenantId": "tenant-rivetquay",
+      "name": "Utility blade",
+      "onHand": 146
+    },
+    {
+      "id": "sku-020",
+      "tenantId": "tenant-rivetquay",
+      "name": "Deburring tool",
+      "onHand": 153
+    },
+    {
+      "id": "sku-021",
+      "tenantId": "tenant-rivetquay",
+      "name": "Steel ruler",
+      "onHand": 160
+    },
+    {
+      "id": "sku-022",
+      "tenantId": "tenant-rivetquay",
+      "name": "Torque wrench",
+      "onHand": 167
+    },
+    {
+      "id": "sku-023",
+      "tenantId": "tenant-rivetquay",
+      "name": "Shop towels",
+      "onHand": 174
+    },
+    {
+      "id": "sku-024",
+      "tenantId": "tenant-rivetquay",
+      "name": "Absorbent pads",
+      "onHand": 181
+    },
+    {
+      "id": "sku-025",
+      "tenantId": "tenant-rivetquay",
+      "name": "Parts bins",
+      "onHand": 188
+    },
+    {
+      "id": "sku-isolation",
+      "tenantId": "tenant-spoolharbour",
+      "name": "Test gasket",
+      "onHand": 2
+    }
+  ],
+  "vendors": [
+    {
+      "id": "vendor-001",
+      "tenantId": "tenant-rivetquay",
+      "name": "Quillflange Fasteners"
+    },
+    {
+      "id": "vendor-002",
+      "tenantId": "tenant-rivetquay",
+      "name": "Gritburrow Safety Goods"
+    },
+    {
+      "id": "vendor-003",
+      "tenantId": "tenant-rivetquay",
+      "name": "Sinterwharf Fluid Parts"
+    }
+  ],
+  "orders": [
+    {
+      "id": "ord-001",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-001",
+      "placedOn": "2026-11-20",
+      "status": "fulfilled",
+      "totalCents": 48250,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-001",
+          "quantity": 2
+        }
+      ],
+      "signals": []
+    },
+    {
+      "id": "ord-002",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-002",
+      "placedOn": "2026-11-19",
+      "status": "fulfilled",
+      "totalCents": 67300,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-006",
+          "quantity": 3
+        }
+      ],
+      "signals": []
+    },
+    {
+      "id": "ord-003",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-003",
+      "placedOn": "2026-11-18",
+      "status": "held",
+      "totalCents": 202500,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-007",
+          "quantity": 4
+        }
+      ],
+      "signals": ["rush_request", "unusual_order_value"]
+    },
+    {
+      "id": "ord-004",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-004",
+      "placedOn": "2026-11-17",
+      "status": "held",
+      "totalCents": 489000,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-004",
+          "quantity": 5
+        }
+      ],
+      "signals": ["unusual_order_value", "delivery_address_changed"]
+    },
+    {
+      "id": "ord-005",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-005",
+      "placedOn": "2026-11-16",
+      "status": "open",
+      "totalCents": 9500,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-017",
+          "quantity": 6
+        }
+      ],
+      "signals": []
+    },
+    {
+      "id": "ord-006",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-006",
+      "placedOn": "2026-11-15",
+      "status": "fulfilled",
+      "totalCents": 15200,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-021",
+          "quantity": 7
+        }
+      ],
+      "signals": []
+    },
+    {
+      "id": "ord-007",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-007",
+      "placedOn": "2026-11-14",
+      "status": "fulfilled",
+      "totalCents": 9200,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-020",
+          "quantity": 8
+        }
+      ],
+      "signals": []
+    },
+    {
+      "id": "ord-008",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-008",
+      "placedOn": "2026-03-16",
+      "status": "fulfilled",
+      "totalCents": 45199,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-013",
+          "quantity": 9
+        }
+      ],
+      "signals": []
+    },
+    {
+      "id": "ord-009",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-009",
+      "placedOn": "2026-03-16",
+      "status": "fulfilled",
+      "totalCents": 23998,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-016",
+          "quantity": 10
+        }
+      ],
+      "signals": []
+    },
+    {
+      "id": "ord-010",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-010",
+      "placedOn": "2026-03-16",
+      "status": "fulfilled",
+      "totalCents": 12600,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-018",
+          "quantity": 11
+        }
+      ],
+      "signals": []
+    },
+    {
+      "id": "ord-isolation",
+      "tenantId": "tenant-spoolharbour",
+      "version": 1,
+      "customerId": "cust-isolation",
+      "placedOn": "2026-11-20",
+      "status": "open",
+      "totalCents": 2500,
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-isolation",
+          "quantity": 1
+        }
+      ],
+      "signals": []
+    }
+  ],
+  "invoices": [
+    {
+      "id": "inv-001",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-002",
+      "orderId": "ord-002",
+      "dueOn": "2026-11-22",
+      "balanceCents": 67300,
+      "currency": "CAD",
+      "status": "overdue"
+    },
+    {
+      "id": "inv-002",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-008",
+      "orderId": "ord-008",
+      "dueOn": "2026-04-16",
+      "balanceCents": 45199,
+      "currency": "CAD",
+      "status": "overdue"
+    },
+    {
+      "id": "inv-003",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-009",
+      "orderId": "ord-009",
+      "dueOn": "2026-04-16",
+      "balanceCents": 23998,
+      "currency": "CAD",
+      "status": "disputed"
+    },
+    {
+      "id": "inv-004",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "customerId": "cust-010",
+      "orderId": "ord-010",
+      "dueOn": "2026-04-16",
+      "balanceCents": 12600,
+      "currency": "CAD",
+      "status": "overdue"
+    }
+  ],
+  "purchaseRequests": [
+    {
+      "id": "pr-001",
+      "tenantId": "tenant-rivetquay",
+      "version": 1,
+      "vendorId": "vendor-002",
+      "costCentre": "stock-toronto",
+      "currency": "CAD",
+      "lines": [
+        {
+          "skuId": "sku-001",
+          "quantity": 60,
+          "unitCostCents": 420
+        }
+      ]
+    }
+  ],
+  "llmRoutes": [
+    {
+      "kind": "native",
+      "providerId": "fixture-native",
+      "fixtureMode": true
+    },
+    {
+      "kind": "byo",
+      "providerId": "fixture-byo",
+      "fixtureMode": true
+    }
+  ],
+  "entitlements": [
+    {
+      "tenantId": "tenant-rivetquay",
+      "flag": {
+        "module": "records",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-rivetquay",
+      "flag": {
+        "module": "procurement",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-rivetquay",
+      "flag": {
+        "module": "collections",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-rivetquay",
+      "flag": {
+        "module": "workflows",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-rivetquay",
+      "flag": {
+        "module": "insights",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-rivetquay",
+      "flag": {
+        "module": "ai",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 12,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-spoolharbour",
+      "flag": {
+        "module": "records",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-spoolharbour",
+      "flag": {
+        "module": "procurement",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-spoolharbour",
+      "flag": {
+        "module": "collections",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-spoolharbour",
+      "flag": {
+        "module": "workflows",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-spoolharbour",
+      "flag": {
+        "module": "insights",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 40,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    },
+    {
+      "tenantId": "tenant-spoolharbour",
+      "flag": {
+        "module": "ai",
+        "enabled": true
+      },
+      "unit": "actions",
+      "allowance": 12,
+      "windowStart": "2026-11-01T00:00:00Z",
+      "windowEnd": "2026-12-01T00:00:00Z"
+    }
+  ],
+  "audio": [
+    {
+      "id": "audio-order-001",
+      "transcript": "Can you check order ord-001?",
+      "orderId": "ord-001"
+    }
+  ]
+}

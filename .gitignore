@@ -1,0 +1,13 @@
+node_modules/
+.pnpm-store/
+.venv/
+.cache/
+dist/
+coverage/
+__pycache__/
+*.py[cod]
+*.tsbuildinfo
+.ruff_cache/
+.env
+.env.*
+!.env.example

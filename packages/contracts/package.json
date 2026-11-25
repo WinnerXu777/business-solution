@@ -1,0 +1,11 @@
+{
+  "name": "@bs/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./v1/schema": "./v1/contracts.schema.json",
+    "./v1/openapi": "./v1/openapi.json"
+  }
+}

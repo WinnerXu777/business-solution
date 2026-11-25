@@ -1,0 +1,503 @@
+{
+  "Id": { "type": "string", "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$" },
+  "Timestamp": {
+    "type": "string",
+    "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{1,3})?Z$"
+  },
+  "DateValue": { "type": "string", "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$" },
+  "Count": { "type": "integer", "minimum": 0, "maximum": 9007199254740991 },
+  "Actor": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": { "id": { "$ref": "#/$defs/Id" }, "kind": { "enum": ["person", "service"] } },
+    "required": ["id", "kind"]
+  },
+  "CallEnvelope": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "version": { "enum": ["v1"] },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "actor": { "$ref": "#/$defs/Actor" },
+      "source": {
+        "enum": ["portal", "rest", "mcp", "chat", "browser_voice", "workflow", "worker"]
+      },
+      "traceId": { "$ref": "#/$defs/Id" },
+      "correlationId": { "$ref": "#/$defs/Id" },
+      "idempotencyKey": { "$ref": "#/$defs/Id" }
+    },
+    "required": [
+      "version",
+      "tenantId",
+      "actor",
+      "source",
+      "traceId",
+      "correlationId",
+      "idempotencyKey"
+    ]
+  },
+  "ApprovalAction": {
+    "enum": [
+      "purchase.order.approve",
+      "collections.email.send",
+      "collections.voice.send",
+      "collections.sms.send",
+      "workflow.template.run"
+    ]
+  },
+  "Approval": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "requestedBy": { "$ref": "#/$defs/Id" },
+      "approverId": { "$ref": "#/$defs/Id" },
+      "tool": { "$ref": "#/$defs/ApprovalAction" },
+      "subjectId": { "$ref": "#/$defs/Id" },
+      "materialHash": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+      "sourceVersion": { "$ref": "#/$defs/Count" },
+      "policyVersion": { "$ref": "#/$defs/Id" },
+      "expiresAt": { "$ref": "#/$defs/Timestamp" },
+      "state": { "enum": ["pending", "approved", "denied", "consumed"] }
+    },
+    "required": [
+      "id",
+      "tenantId",
+      "requestedBy",
+      "approverId",
+      "tool",
+      "subjectId",
+      "materialHash",
+      "sourceVersion",
+      "policyVersion",
+      "expiresAt",
+      "state"
+    ]
+  },
+  "PendingApproval": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "state": { "enum": ["pending_approval"] },
+      "approval": { "$ref": "#/$defs/Approval" }
+    },
+    "required": ["state", "approval"]
+  },
+  "Denied": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "state": { "enum": ["denied"] },
+      "code": {
+        "enum": [
+          "forbidden",
+          "not_found",
+          "module_disabled",
+          "quota_exceeded",
+          "invalid_approval",
+          "suppressed",
+          "idempotency_conflict"
+        ]
+      },
+      "message": { "type": "string", "minLength": 1 }
+    },
+    "required": ["state", "code", "message"]
+  },
+  "Failed": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "state": { "enum": ["failed"] },
+      "code": { "enum": ["invalid_input", "provider_error", "unavailable"] },
+      "message": { "type": "string", "minLength": 1 },
+      "retryable": { "type": "boolean" }
+    },
+    "required": ["state", "code", "message", "retryable"]
+  },
+  "Unknown": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "state": { "enum": ["unknown"] },
+      "actionId": { "$ref": "#/$defs/Id" },
+      "message": { "type": "string", "minLength": 1 }
+    },
+    "required": ["state", "actionId", "message"]
+  },
+  "ModuleId": { "enum": ["records", "procurement", "collections", "workflows", "insights", "ai"] },
+  "UsageUnit": { "enum": ["actions", "messages", "tokens", "audio_seconds"] },
+  "AuditEntry": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "actor": { "$ref": "#/$defs/Actor" },
+      "source": {
+        "enum": ["portal", "rest", "mcp", "chat", "browser_voice", "workflow", "worker"]
+      },
+      "tool": { "$ref": "#/$defs/Id" },
+      "traceId": { "$ref": "#/$defs/Id" },
+      "correlationId": { "$ref": "#/$defs/Id" },
+      "actionId": { "$ref": "#/$defs/Id" },
+      "policyVersion": { "$ref": "#/$defs/Id" },
+      "state": { "enum": ["ok", "pending_approval", "denied", "failed", "unknown"] },
+      "occurredAt": { "$ref": "#/$defs/Timestamp" }
+    },
+    "required": [
+      "id",
+      "tenantId",
+      "actor",
+      "source",
+      "tool",
+      "traceId",
+      "correlationId",
+      "actionId",
+      "policyVersion",
+      "state",
+      "occurredAt"
+    ]
+  },
+  "UsageCounterEvent": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "module": { "$ref": "#/$defs/ModuleId" },
+      "outcomeId": { "$ref": "#/$defs/Id" },
+      "unit": { "$ref": "#/$defs/UsageUnit" },
+      "quantity": { "$ref": "#/$defs/Count" },
+      "occurredAt": { "$ref": "#/$defs/Timestamp" }
+    },
+    "required": ["id", "tenantId", "module", "outcomeId", "unit", "quantity", "occurredAt"]
+  },
+  "ModuleFlag": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": { "module": { "$ref": "#/$defs/ModuleId" }, "enabled": { "type": "boolean" } },
+    "required": ["module", "enabled"]
+  },
+  "Entitlement": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "flag": { "$ref": "#/$defs/ModuleFlag" },
+      "unit": { "$ref": "#/$defs/UsageUnit" },
+      "allowance": { "$ref": "#/$defs/Count" },
+      "windowStart": { "$ref": "#/$defs/Timestamp" },
+      "windowEnd": { "$ref": "#/$defs/Timestamp" }
+    },
+    "required": ["tenantId", "flag", "unit", "allowance", "windowStart", "windowEnd"]
+  },
+  "LlmRoute": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "kind": { "enum": ["native", "byo"] },
+      "providerId": { "$ref": "#/$defs/Id" },
+      "fixtureMode": { "type": "boolean" }
+    },
+    "required": ["kind", "providerId", "fixtureMode"]
+  },
+  "Customer": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "version": { "$ref": "#/$defs/Count" },
+      "name": { "type": "string", "minLength": 1 },
+      "email": { "type": "string", "minLength": 1 },
+      "phone": { "type": "string", "minLength": 1 },
+      "lastOrderOn": { "$ref": "#/$defs/DateValue" },
+      "outreachAllowed": { "type": "boolean" }
+    },
+    "required": [
+      "id",
+      "tenantId",
+      "version",
+      "name",
+      "email",
+      "phone",
+      "lastOrderOn",
+      "outreachAllowed"
+    ]
+  },
+  "Sku": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "name": { "type": "string", "minLength": 1 },
+      "onHand": { "$ref": "#/$defs/Count" }
+    },
+    "required": ["id", "tenantId", "name", "onHand"]
+  },
+  "Vendor": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "name": { "type": "string", "minLength": 1 }
+    },
+    "required": ["id", "tenantId", "name"]
+  },
+  "OrderLine": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "skuId": { "$ref": "#/$defs/Id" },
+      "quantity": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 }
+    },
+    "required": ["skuId", "quantity"]
+  },
+  "Order": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "version": { "$ref": "#/$defs/Count" },
+      "customerId": { "$ref": "#/$defs/Id" },
+      "placedOn": { "$ref": "#/$defs/DateValue" },
+      "status": { "enum": ["open", "fulfilled", "held"] },
+      "totalCents": { "$ref": "#/$defs/Count" },
+      "currency": { "enum": ["CAD"] },
+      "lines": { "type": "array", "items": { "$ref": "#/$defs/OrderLine" } },
+      "signals": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+    },
+    "required": [
+      "id",
+      "tenantId",
+      "version",
+      "customerId",
+      "placedOn",
+      "status",
+      "totalCents",
+      "currency",
+      "lines",
+      "signals"
+    ]
+  },
+  "Invoice": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "version": { "$ref": "#/$defs/Count" },
+      "customerId": { "$ref": "#/$defs/Id" },
+      "orderId": { "$ref": "#/$defs/Id" },
+      "dueOn": { "$ref": "#/$defs/DateValue" },
+      "balanceCents": { "$ref": "#/$defs/Count" },
+      "currency": { "enum": ["CAD"] },
+      "status": { "enum": ["open", "overdue", "paid", "disputed"] }
+    },
+    "required": [
+      "id",
+      "tenantId",
+      "version",
+      "customerId",
+      "orderId",
+      "dueOn",
+      "balanceCents",
+      "currency",
+      "status"
+    ]
+  },
+  "PurchaseLine": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "skuId": { "$ref": "#/$defs/Id" },
+      "quantity": { "type": "integer", "minimum": 1, "maximum": 9007199254740991 },
+      "unitCostCents": { "$ref": "#/$defs/Count" }
+    },
+    "required": ["skuId", "quantity", "unitCostCents"]
+  },
+  "PurchaseRequest": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "version": { "$ref": "#/$defs/Count" },
+      "vendorId": { "$ref": "#/$defs/Id" },
+      "costCentre": { "$ref": "#/$defs/Id" },
+      "currency": { "enum": ["CAD"] },
+      "lines": { "type": "array", "items": { "$ref": "#/$defs/PurchaseLine" } }
+    },
+    "required": ["id", "tenantId", "version", "vendorId", "costCentre", "currency", "lines"]
+  },
+  "PurchaseOrderDraft": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "requestId": { "$ref": "#/$defs/Id" },
+      "sourceVersion": { "$ref": "#/$defs/Count" },
+      "vendorId": { "$ref": "#/$defs/Id" },
+      "costCentre": { "$ref": "#/$defs/Id" },
+      "currency": { "enum": ["CAD"] },
+      "lines": { "type": "array", "items": { "$ref": "#/$defs/PurchaseLine" } }
+    },
+    "required": [
+      "id",
+      "tenantId",
+      "requestId",
+      "sourceVersion",
+      "vendorId",
+      "costCentre",
+      "currency",
+      "lines"
+    ]
+  },
+  "PurchaseOrder": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "draft": { "$ref": "#/$defs/PurchaseOrderDraft" },
+      "approvalId": { "$ref": "#/$defs/Id" },
+      "status": { "enum": ["approved"] }
+    },
+    "required": ["id", "draft", "approvalId", "status"]
+  },
+  "MessageChannel": { "enum": ["email", "voice", "sms"] },
+  "MessagePreview": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "channel": { "$ref": "#/$defs/MessageChannel" },
+      "customerId": { "$ref": "#/$defs/Id" },
+      "customerVersion": { "$ref": "#/$defs/Count" },
+      "recipient": { "type": "string", "minLength": 1 },
+      "sourceId": { "$ref": "#/$defs/Id" },
+      "sourceVersion": { "$ref": "#/$defs/Count" },
+      "subject": { "anyOf": [{ "type": "string", "minLength": 1 }, { "type": "null" }] },
+      "body": { "type": "string", "minLength": 1 }
+    },
+    "required": [
+      "id",
+      "tenantId",
+      "channel",
+      "customerId",
+      "customerVersion",
+      "recipient",
+      "sourceId",
+      "sourceVersion",
+      "subject",
+      "body"
+    ]
+  },
+  "DeliveryReceipt": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "channel": { "$ref": "#/$defs/MessageChannel" },
+      "status": { "enum": ["simulated", "captured"] },
+      "providerId": { "$ref": "#/$defs/Id" }
+    },
+    "required": ["id", "channel", "status", "providerId"]
+  },
+  "MessageSendInput": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "previewId": { "$ref": "#/$defs/Id" },
+      "approvalId": { "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }] }
+    },
+    "required": ["previewId", "approvalId"]
+  },
+  "ForecastPoint": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "weekOf": { "$ref": "#/$defs/DateValue" },
+      "estimate": { "$ref": "#/$defs/Count" },
+      "lower": { "$ref": "#/$defs/Count" },
+      "upper": { "$ref": "#/$defs/Count" }
+    },
+    "required": ["weekOf", "estimate", "lower", "upper"]
+  },
+  "Turn": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "role": { "enum": ["user", "assistant"] },
+      "content": { "type": "string", "minLength": 1 }
+    },
+    "required": ["role", "content"]
+  },
+  "ActorGrant": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "tenantId": { "$ref": "#/$defs/Id" },
+      "actor": { "$ref": "#/$defs/Actor" },
+      "role": { "enum": ["operator", "approver", "reader"] }
+    },
+    "required": ["tenantId", "actor", "role"]
+  },
+  "ChatAudioFixture": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "transcript": { "type": "string", "minLength": 1 },
+      "orderId": { "$ref": "#/$defs/Id" }
+    },
+    "required": ["id", "transcript", "orderId"]
+  },
+  "Workspace": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "id": { "$ref": "#/$defs/Id" },
+      "name": { "type": "string", "minLength": 1 },
+      "city": { "type": "string", "minLength": 1 }
+    },
+    "required": ["id", "name", "city"]
+  },
+  "DemoFixtures": {
+    "type": "object",
+    "additionalProperties": false,
+    "properties": {
+      "asOf": { "$ref": "#/$defs/Timestamp" },
+      "workspaces": { "type": "array", "items": { "$ref": "#/$defs/Workspace" } },
+      "grants": { "type": "array", "items": { "$ref": "#/$defs/ActorGrant" } },
+      "customers": { "type": "array", "items": { "$ref": "#/$defs/Customer" } },
+      "skus": { "type": "array", "items": { "$ref": "#/$defs/Sku" } },
+      "vendors": { "type": "array", "items": { "$ref": "#/$defs/Vendor" } },
+      "orders": { "type": "array", "items": { "$ref": "#/$defs/Order" } },
+      "invoices": { "type": "array", "items": { "$ref": "#/$defs/Invoice" } },
+      "purchaseRequests": { "type": "array", "items": { "$ref": "#/$defs/PurchaseRequest" } },
+      "llmRoutes": { "type": "array", "items": { "$ref": "#/$defs/LlmRoute" } },
+      "entitlements": { "type": "array", "items": { "$ref": "#/$defs/Entitlement" } },
+      "audio": { "type": "array", "items": { "$ref": "#/$defs/ChatAudioFixture" } }
+    },
+    "required": [
+      "asOf",
+      "workspaces",
+      "grants",
+      "customers",
+      "skus",
+      "vendors",
+      "orders",
+      "invoices",
+      "purchaseRequests",
+      "llmRoutes",
+      "entitlements",
+      "audio"
+    ]
+  }
+}

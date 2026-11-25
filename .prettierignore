@@ -1,0 +1,9 @@
+.cache/
+.venv/
+.pnpm-store/
+**/node_modules/
+**/dist/
+packages/contracts/src/generated.ts
+packages/contracts/v1/contracts.schema.json
+packages/contracts/v1/openapi.json
+pnpm-lock.yaml

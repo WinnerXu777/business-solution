@@ -1,0 +1,20 @@
+name: Milestone 1 base
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate Compose config
+        run: docker compose -f infra/compose/compose.yaml --profile placeholders config --quiet
+      - name: Install pinned tooling and dependencies
+        run: docker build --file infra/ci.Dockerfile --tag rivetquay-ci .
+      - name: Run checks with network disabled
+        run: docker run --rm --network none -e CI=true -e UV_OFFLINE=1 -e COREPACK_ENABLE_NETWORK=0 rivetquay-ci

@@ -1,0 +1,9 @@
+packages:
+  - apps/*
+  - packages/*
+  - tests/e2e
+
+allowBuilds:
+  esbuild: true
+
+verifyDepsBeforeRun: error

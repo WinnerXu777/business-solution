@@ -1,0 +1,284 @@
+{
+  "order.read": {
+    "name": "ReadOrder",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "orderId": { "$ref": "#/$defs/Id" } },
+      "required": ["orderId"]
+    },
+    "output": { "$ref": "#/$defs/Order" }
+  },
+  "customer.read": {
+    "name": "ReadCustomer",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "customerId": { "$ref": "#/$defs/Id" } },
+      "required": ["customerId"]
+    },
+    "output": { "$ref": "#/$defs/Customer" }
+  },
+  "invoice.read": {
+    "name": "ReadInvoice",
+    "module": "records",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "invoiceId": { "$ref": "#/$defs/Id" } },
+      "required": ["invoiceId"]
+    },
+    "output": { "$ref": "#/$defs/Invoice" }
+  },
+  "purchase.request.read": {
+    "name": "ReadPurchaseRequest",
+    "module": "procurement",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "requestId": { "$ref": "#/$defs/Id" } },
+      "required": ["requestId"]
+    },
+    "output": { "$ref": "#/$defs/PurchaseRequest" }
+  },
+  "purchase.order.draft": {
+    "name": "DraftPurchaseOrder",
+    "module": "procurement",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "requestId": { "$ref": "#/$defs/Id" } },
+      "required": ["requestId"]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "draft": { "$ref": "#/$defs/PurchaseOrderDraft" },
+        "approval": { "$ref": "#/$defs/Approval" }
+      },
+      "required": ["draft", "approval"]
+    }
+  },
+  "purchase.order.approve": {
+    "name": "ApprovePurchaseOrder",
+    "module": "procurement",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "draftId": { "$ref": "#/$defs/Id" }, "approvalId": { "$ref": "#/$defs/Id" } },
+      "required": ["draftId", "approvalId"]
+    },
+    "output": { "$ref": "#/$defs/PurchaseOrder" }
+  },
+  "collections.email.draft": {
+    "name": "DraftCollectionsEmail",
+    "module": "collections",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "invoiceId": { "$ref": "#/$defs/Id" } },
+      "required": ["invoiceId"]
+    },
+    "output": { "$ref": "#/$defs/MessagePreview" }
+  },
+  "message.preview": {
+    "name": "PreviewMessage",
+    "module": "collections",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "invoiceId": { "$ref": "#/$defs/Id" },
+        "channel": { "$ref": "#/$defs/MessageChannel" }
+      },
+      "required": ["invoiceId", "channel"]
+    },
+    "output": { "$ref": "#/$defs/MessagePreview" }
+  },
+  "collections.email.send": {
+    "name": "SendEmail",
+    "module": "collections",
+    "input": { "$ref": "#/$defs/MessageSendInput" },
+    "output": { "$ref": "#/$defs/DeliveryReceipt" }
+  },
+  "collections.voice.send": {
+    "name": "SendVoice",
+    "module": "collections",
+    "input": { "$ref": "#/$defs/MessageSendInput" },
+    "output": { "$ref": "#/$defs/DeliveryReceipt" }
+  },
+  "collections.sms.send": {
+    "name": "SendSms",
+    "module": "collections",
+    "input": { "$ref": "#/$defs/MessageSendInput" },
+    "output": { "$ref": "#/$defs/DeliveryReceipt" }
+  },
+  "workflow.template.run": {
+    "name": "RunWorkflowTemplate",
+    "module": "workflows",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "templateId": { "enum": ["win-back-v1"] },
+        "mode": { "enum": ["preview", "run"] },
+        "approvalId": { "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }] }
+      },
+      "required": ["templateId", "mode", "approvalId"]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "runId": { "$ref": "#/$defs/Id" },
+        "templateId": { "enum": ["win-back-v1"] },
+        "status": { "enum": ["previewed", "simulated"] },
+        "previews": { "type": "array", "items": { "$ref": "#/$defs/MessagePreview" } },
+        "receipts": { "type": "array", "items": { "$ref": "#/$defs/DeliveryReceipt" } }
+      },
+      "required": ["runId", "templateId", "status", "previews", "receipts"]
+    }
+  },
+  "fraud.score": {
+    "name": "ScoreFraud",
+    "module": "insights",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "orderId": { "$ref": "#/$defs/Id" } },
+      "required": ["orderId"]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "orderId": { "$ref": "#/$defs/Id" },
+        "rule": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "score": { "type": "number", "minimum": 0, "maximum": 1 },
+            "reasons": { "type": "array", "items": { "type": "string", "minLength": 1 } },
+            "version": { "$ref": "#/$defs/Id" }
+          },
+          "required": ["score", "reasons", "version"]
+        },
+        "model": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "score": { "type": "number", "minimum": 0, "maximum": 1 },
+            "artifactId": { "$ref": "#/$defs/Id" }
+          },
+          "required": ["score", "artifactId"]
+        },
+        "disposition": { "enum": ["review", "pass"] }
+      },
+      "required": ["orderId", "rule", "model", "disposition"]
+    }
+  },
+  "forecast.run": {
+    "name": "RunForecast",
+    "module": "insights",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "series": { "enum": ["weekly_sales", "sku_demand"] },
+        "skuId": { "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }] },
+        "horizonWeeks": { "type": "integer", "minimum": 1, "maximum": 12 }
+      },
+      "required": ["series", "skuId", "horizonWeeks"]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "status": { "enum": ["fixture", "insufficient_history"] },
+        "unit": { "enum": ["cents", "items"] },
+        "artifactId": { "$ref": "#/$defs/Id" },
+        "points": { "type": "array", "items": { "$ref": "#/$defs/ForecastPoint" } }
+      },
+      "required": ["status", "unit", "artifactId", "points"]
+    }
+  },
+  "profile.run": {
+    "name": "RunProfile",
+    "module": "insights",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": { "customerId": { "$ref": "#/$defs/Id" } },
+      "required": ["customerId"]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "customerId": { "$ref": "#/$defs/Id" },
+        "segment": { "enum": ["active", "win_back", "abstain"] },
+        "evidenceIds": { "type": "array", "items": { "$ref": "#/$defs/Id" } },
+        "artifactId": { "$ref": "#/$defs/Id" },
+        "reviewRequired": { "enum": [true] }
+      },
+      "required": ["customerId", "segment", "evidenceIds", "artifactId", "reviewRequired"]
+    }
+  },
+  "chat.run": {
+    "name": "RunChat",
+    "module": "ai",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/Id" },
+        "turns": { "type": "array", "items": { "$ref": "#/$defs/Turn" } },
+        "orderId": { "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }] },
+        "audioFixtureId": { "anyOf": [{ "$ref": "#/$defs/Id" }, { "type": "null" }] },
+        "route": { "$ref": "#/$defs/LlmRoute" }
+      },
+      "required": ["sessionId", "turns", "orderId", "audioFixtureId", "route"]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sessionId": { "$ref": "#/$defs/Id" },
+        "reply": { "type": "string", "minLength": 1 },
+        "order": { "anyOf": [{ "$ref": "#/$defs/Order" }, { "type": "null" }] },
+        "handoff": { "type": "boolean" }
+      },
+      "required": ["sessionId", "reply", "order", "handoff"]
+    }
+  },
+  "llm.complete": {
+    "name": "CompleteLlm",
+    "module": "ai",
+    "input": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "model": { "$ref": "#/$defs/Id" },
+        "turns": { "type": "array", "items": { "$ref": "#/$defs/Turn" } },
+        "maxOutputTokens": { "type": "integer", "minimum": 1, "maximum": 4096 },
+        "route": { "$ref": "#/$defs/LlmRoute" }
+      },
+      "required": ["model", "turns", "maxOutputTokens", "route"]
+    },
+    "output": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "text": { "type": "string", "minLength": 1 },
+        "model": { "$ref": "#/$defs/Id" },
+        "route": { "$ref": "#/$defs/LlmRoute" },
+        "inputTokens": { "$ref": "#/$defs/Count" },
+        "outputTokens": { "$ref": "#/$defs/Count" }
+      },
+      "required": ["text", "model", "route", "inputTokens", "outputTokens"]
+    }
+  }
+}

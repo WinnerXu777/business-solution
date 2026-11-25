@@ -1,0 +1,10 @@
+**/node_modules
+**/__pycache__
+.venv
+.cache
+.pnpm-store
+.git
+**/.env
+**/.env.*
+!infra/compose/.env.example
+**/dist
