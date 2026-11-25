@@ -9,6 +9,10 @@ export type IdentityVerifier = (
   token: string,
 ) => VerifiedIdentity | undefined | Promise<VerifiedIdentity | undefined>;
 
+export function bearerToken(authorization: string | undefined) {
+  return /^Bearer ([^\s,]+)$/i.exec(authorization ?? '')?.[1];
+}
+
 /** Token bindings are provisioned by the fixture host. Token text carries no identity claims. */
 export function createFixtureIdentityVerifier(
   tokens: ReadonlyMap<string, VerifiedIdentity>,

@@ -10,7 +10,7 @@ export function createFixtureScoringAdapter(): ScoringAdapter {
       const hasHistory =
         tenantId === 'tenant-rivetquay' &&
         (input.skuId === 'sku-001' || (input.series === 'weekly_sales' && input.skuId === null));
-      if (hasHistory) return fixture.forecast(input);
+      if (hasHistory) return fixture.forecast(input, tenantId);
       return {
         status: 'insufficient_history',
         unit: input.series === 'weekly_sales' ? 'cents' : 'items',

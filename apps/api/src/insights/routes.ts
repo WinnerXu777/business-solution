@@ -6,7 +6,8 @@ import type {
 } from '@bs/contracts';
 import type { ToolGateway } from '@bs/core';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
-import schemas from '../../../../packages/contracts/v1/contracts.schema.json' with { type: 'json' };
+import { catalog, validates } from '../governance/catalog.ts';
+import { matchesIdentity, verifiedEnvelope } from '../governance/identity.ts';
 
 type InsightsRequest = ScoreFraudRequest | RunForecastRequest | RunProfileRequest;
 type Identity = Pick<CallEnvelope, 'tenantId' | 'actor'>;
@@ -17,51 +18,40 @@ type InsightsOptions = {
   resolveIdentity(request: FastifyRequest): Identity | undefined | Promise<Identity | undefined>;
 };
 
-const requests = {
-  'fraud.score': 'ScoreFraudRequest',
-  'forecast.run': 'RunForecastRequest',
-  'profile.run': 'RunProfileRequest',
-} as const;
+export const insightTools = ['fraud.score', 'forecast.run', 'profile.run'] as const;
 
 export function registerInsightsRoutes(app: FastifyInstance, options: InsightsOptions): void {
-  for (const [tool, schema] of Object.entries(requests)) {
-    app.post<{ Body: InsightsRequest }>(
-      '/v1/tools/' + tool,
-      { schema: { body: { $ref: '#/$defs/' + schema, $defs: schemas.$defs } } },
-      async (request, reply) => {
-        const identity = await options.resolveIdentity(request);
-        if (!identity) {
-          return reply.code(401).send({ message: 'Authentication required.' });
-        }
+  for (const tool of insightTools) {
+    const { path, requestSchema } = catalog.get(tool)!;
+    app.post(path, async (request, reply) => {
+      const identity = await options.resolveIdentity(request);
+      if (!identity) {
+        return reply
+          .header('WWW-Authenticate', 'Bearer')
+          .code(401)
+          .send({ message: 'Authentication required.' });
+      }
+      reply.header('Cache-Control', 'no-store');
+      if (!validates(request, requestSchema, request.body))
+        return reply.code(400).send({ error: 'invalid_input' });
+      const call = request.body as InsightsRequest;
+      if (!matchesIdentity(call.envelope, identity)) {
+        return { state: 'denied', code: 'forbidden', message: 'forbidden' };
+      }
 
-        const { envelope } = request.body;
-        if (
-          envelope.tenantId !== identity.tenantId ||
-          envelope.actor.id !== identity.actor.id ||
-          envelope.actor.kind !== identity.actor.kind
-        ) {
-          return { state: 'denied', code: 'forbidden', message: 'forbidden' };
-        }
-
-        try {
-          return await options.gateway.call({
-            ...request.body,
-            envelope: {
-              ...envelope,
-              tenantId: identity.tenantId,
-              actor: { id: identity.actor.id, kind: identity.actor.kind },
-              source: 'rest',
-            },
-          });
-        } catch {
-          return {
-            state: 'failed',
-            code: 'unavailable',
-            message: 'Insights gateway unavailable.',
-            retryable: true,
-          };
-        }
-      },
-    );
+      try {
+        return await options.gateway.call({
+          ...call,
+          envelope: verifiedEnvelope(call.envelope, identity, 'rest'),
+        });
+      } catch {
+        return {
+          state: 'failed',
+          code: 'unavailable',
+          message: 'Insights gateway unavailable.',
+          retryable: true,
+        };
+      }
+    });
   }
 }

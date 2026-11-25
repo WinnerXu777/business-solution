@@ -1,107 +1,70 @@
 import type { ProviderAdapters } from '@bs/adapters';
 import type { RecordRepository } from '@bs/business';
-import {
-  type CallEnvelope,
-  type DemoFixtures,
-  type Denied,
-  type MessageChannel,
-  type MessagePreview,
-  type PurchaseOrder,
-  type PurchaseOrderDraft,
-  type ToolCall,
-  type ToolInputMap,
-  type ToolResult,
+import type {
+  ApprovalAction,
+  CallEnvelope,
+  DemoFixtures,
+  MessageChannel,
+  MessagePreview,
+  ToolCall,
+  ToolInputMap,
+  ToolResult,
 } from '@bs/contracts';
 import { ApprovalLedger, type ApprovalIntent } from './approvals.ts';
 import {
   denied,
   digest,
   invalidInput,
-  isRetryableOutcome,
   lookup,
   ok,
   unavailable,
   unknownOutcome,
 } from './results.ts';
+import type { Effect, TenantState } from './store.ts';
 
 export interface Execution {
   envelope: CallEnvelope;
   actionId: string;
   policyVersion: string;
-  now: () => string;
-  authorizeEffect: () => Denied | undefined;
+  now: string;
   approverId: string | undefined;
+  stage: (target: string, approvalId: string, effect: Effect) => void;
 }
 
-function pendingOrDenied(approval: ReturnType<ApprovalLedger['prepare']>): ToolResult {
-  return 'code' in approval ? approval : { state: 'pending_approval', approval };
-}
+const channels = {
+  'collections.email.send': 'email',
+  'collections.voice.send': 'voice',
+  'collections.sms.send': 'sms',
+} as const;
 
 export function createToolHandlers(
   records: RecordRepository,
-  approvals: ApprovalLedger,
   fixtures: DemoFixtures,
   providers?: Partial<ProviderAdapters>,
 ) {
-  const drafts = new Map<string, PurchaseOrderDraft>();
-  const previews = new Map<string, MessagePreview>();
-
-  function prepare(context: Execution, intent: ApprovalIntent) {
-    const { envelope, approverId, policyVersion, now } = context;
-    return approverId
-      ? approvals.prepare(envelope, intent, approverId, policyVersion, now())
-      : denied('forbidden');
-  }
-
-  async function approvedEffect(
-    context: Execution,
-    intent: ApprovalIntent,
-    target: string,
-    approvalId: string | null,
-    effect: () => Promise<ToolResult>,
-  ): Promise<ToolResult> {
-    const { envelope, actionId, policyVersion, now } = context;
-    const blocked = context.authorizeEffect();
-    if (blocked) return blocked;
-    const held = approvals.getHold(envelope.tenantId, intent.tool, target);
-    if (held) return held;
-    if (approvalId === null) return pendingOrDenied(prepare(context, intent));
-    const restoreApproval = approvals.consume(envelope, intent, approvalId, policyVersion, now());
-    if (!restoreApproval) return denied('invalid_approval');
-    let result;
-    try {
-      result = await effect();
-    } catch {
-      result = unknownOutcome(actionId);
-    }
-    if (result.state === 'unknown') {
-      result = unknownOutcome(actionId);
-      approvals.hold(envelope.tenantId, intent.tool, target, result);
-    } else if (isRetryableOutcome(result)) {
-      restoreApproval();
-    }
-    return result;
-  }
-
-  async function buildDraft(tenantId: string, requestId: string) {
+  async function purchase(tenantId: string, requestId: string) {
     const request = await records.get('purchaseRequests', tenantId, requestId);
     if (!request) return;
     const { id, version, ...fields } = request;
-    return {
+    const draft = {
       ...fields,
       id: 'draft-' + digest(request),
       requestId: id,
       sourceVersion: version,
     };
-  }
-
-  function poIntent(draft: PurchaseOrderDraft): ApprovalIntent {
-    return {
+    const vendor = await records.get('vendors', tenantId, draft.vendorId);
+    const skus = await Promise.all(
+      draft.lines.map((line) => records.get('skus', tenantId, line.skuId)),
+    );
+    if (!vendor || skus.some((sku) => !sku)) return;
+    const intent: ApprovalIntent = {
       tool: 'purchase.order.approve',
       subjectId: draft.id,
+      target: requestId,
       sourceVersion: draft.sourceVersion,
-      material: draft,
+      material: { draft, vendor, skus },
     };
+    return { draft, intent };
   }
 
   async function invoicePreview(tenantId: string, invoiceId: string, channel: MessageChannel) {
@@ -129,109 +92,50 @@ export function createToolHandlers(
     return ok({ id: 'preview-' + digest([material, invoice.balanceCents]), ...material });
   }
 
-  async function preview(tenantId: string, invoiceId: string, channel: MessageChannel) {
-    const result = await invoicePreview(tenantId, invoiceId, channel);
-    if (result.state === 'ok') previews.set(result.output.id, result.output);
-    return result;
+  function messageIntent(preview: MessagePreview): ApprovalIntent {
+    return {
+      tool: `collections.${preview.channel}.send`,
+      subjectId: preview.id,
+      target: preview.sourceId,
+      sourceVersion: preview.sourceVersion,
+      material: preview,
+    };
   }
 
-  async function send(
-    context: Execution,
-    tool: `collections.${MessageChannel}.send`,
-    channel: MessageChannel,
-    input: ToolInputMap[typeof tool],
-  ): Promise<ToolResult> {
-    const { tenantId } = context.envelope;
-    const prior = previews.get(input.previewId);
-    if (!prior || prior.tenantId !== tenantId || prior.channel !== channel)
-      return denied('not_found');
-    const current = await invoicePreview(tenantId, prior.sourceId, channel);
-    if (current.state !== 'ok') return current;
-    if (current.output.id !== prior.id) return denied('invalid_approval');
-    const adapter = providers?.messages?.[channel];
-    if (input.approvalId !== null && !adapter) return unavailable();
-    return approvedEffect(
-      context,
-      {
-        tool,
-        subjectId: prior.id,
-        material: current.output,
-        sourceVersion: current.output.sourceVersion,
-      },
-      prior.sourceId,
-      input.approvalId,
-      async () => {
-        if (!adapter) return unavailable();
-        const receipt = await adapter.send(structuredClone(current.output), context.actionId);
-        return 'state' in receipt ? receipt : ok(receipt);
-      },
-    );
-  }
-
-  async function workflow(context: Execution, input: ToolInputMap['workflow.template.run']) {
-    const { tenantId } = context.envelope;
-    const { templateId } = input;
-    const runId = 'run-' + context.actionId;
-    const messages = (await records.listCustomers(tenantId))
+  async function workflowPreviews(tenantId: string): Promise<MessagePreview[]> {
+    return (await records.listCustomers(tenantId))
       .filter((customer) => customer.lastOrderOn < '2026-06-01' && customer.outreachAllowed)
       .sort((left, right) => left.id.localeCompare(right.id))
-      .map(
-        (customer): MessagePreview => ({
-          id: 'win-back-' + digest([tenantId, customer.id, customer.version]),
-          tenantId,
-          channel: 'email',
-          customerId: customer.id,
-          customerVersion: customer.version,
-          recipient: customer.email,
-          sourceId: customer.id,
-          sourceVersion: customer.version,
-          subject: 'Fixture win-back',
-          body: 'Test message from Rivetquay.',
-        }),
-      );
-    if (input.mode === 'preview') {
-      return ok({
-        runId,
-        templateId,
-        status: 'previewed' as const,
-        previews: messages,
-        receipts: [],
-      });
-    }
-    const adapter = providers?.messages?.email;
-    if (input.approvalId !== null && !adapter) return unavailable();
-    return approvedEffect(
-      context,
-      {
-        tool: 'workflow.template.run',
-        subjectId: templateId,
-        material: messages,
-        sourceVersion: 1,
-      },
-      templateId,
-      input.approvalId,
-      async () => {
-        if (!adapter) return unavailable();
-        const receipts = [];
-        for (const [index, message] of messages.entries()) {
-          const result = await adapter.send(
-            structuredClone(message),
-            context.actionId + '-' + index,
-          );
-          if ('state' in result) {
-            return index === 0 ? result : unknownOutcome(context.actionId);
-          }
-          receipts.push(result);
-        }
-        return ok({
-          runId,
-          templateId,
-          status: 'simulated' as const,
-          previews: messages,
-          receipts,
-        });
-      },
-    );
+      .map((customer) => ({
+        id: 'win-back-' + digest([tenantId, customer.id, customer.version]),
+        tenantId,
+        channel: 'email',
+        customerId: customer.id,
+        customerVersion: customer.version,
+        recipient: customer.email,
+        sourceId: customer.id,
+        sourceVersion: customer.version,
+        subject: 'Fixture win-back',
+        body: 'Test message from Rivetquay.',
+      }));
+  }
+
+  function workflowIntent(templateId: string, previews: MessagePreview[]): ApprovalIntent {
+    return {
+      tool: 'workflow.template.run',
+      subjectId: templateId,
+      target: templateId,
+      material: previews,
+      sourceVersion: 1,
+    };
+  }
+
+  async function currentIntent(tenantId: string, tool: ApprovalAction, target: string) {
+    if (tool === 'purchase.order.approve') return (await purchase(tenantId, target))?.intent;
+    if (tool === 'workflow.template.run')
+      return workflowIntent(target, await workflowPreviews(tenantId));
+    const current = await invoicePreview(tenantId, target, channels[tool]);
+    if (current.state === 'ok') return messageIntent(current.output);
   }
 
   function acceptsRoute(route: DemoFixtures['llmRoutes'][number]) {
@@ -243,9 +147,68 @@ export function createToolHandlers(
     );
   }
 
-  return async function dispatch(request: ToolCall, context: Execution): Promise<ToolResult> {
+  async function dispatch(
+    request: ToolCall,
+    context: Execution,
+    state: TenantState,
+  ): Promise<ToolResult> {
     const { tenantId } = request.envelope;
-    const { input, tool } = request;
+    const { tool, input } = request;
+    const { envelope, actionId, policyVersion, now, approverId } = context;
+    const approvals = new ApprovalLedger(state.rows.approval);
+
+    function prepare(intent: ApprovalIntent) {
+      return approverId
+        ? approvals.prepare(envelope, intent, approverId, policyVersion, now)
+        : denied('forbidden');
+    }
+
+    function approvedEffect(
+      intent: ApprovalIntent,
+      approvalId: string | null,
+      effect: Effect,
+    ): ToolResult {
+      const held = [...state.rows.outbox.values()].find((job) => {
+        const staged = state.rows.intent.get(job.id);
+        return (
+          staged?.request.tool === intent.tool &&
+          staged.target === intent.target &&
+          (['queued', 'running', 'retryable', 'unknown'].includes(job.status) || job.unresolved)
+        );
+      });
+      if (held) return unknownOutcome(held.id);
+      if (approvalId === null) {
+        const approval = prepare(intent);
+        return 'code' in approval ? approval : { state: 'pending_approval', approval };
+      }
+      if (!approvals.consume(envelope, intent, approvalId, policyVersion, now))
+        return denied('invalid_approval');
+      context.stage(intent.target, approvalId, effect);
+      return unknownOutcome(actionId);
+    }
+
+    async function preview(invoiceId: string, channel: MessageChannel) {
+      const result = await invoicePreview(tenantId, invoiceId, channel);
+      if (result.state === 'ok') state.rows.artifact.set(result.output.id, result.output);
+      return result;
+    }
+
+    async function send(
+      channel: MessageChannel,
+      input: ToolInputMap[`collections.${MessageChannel}.send`],
+    ) {
+      const prior = state.rows.artifact.get(input.previewId);
+      if (!prior || !('channel' in prior) || prior.channel !== channel) return denied('not_found');
+      const current = await invoicePreview(tenantId, prior.sourceId, channel);
+      if (current.state !== 'ok') return current;
+      if (current.output.id !== prior.id) return denied('invalid_approval');
+      if (input.approvalId !== null && !providers?.messages?.[channel]) return unavailable();
+      return approvedEffect(messageIntent(current.output), input.approvalId, {
+        kind: 'message',
+        preview: current.output,
+      });
+    }
+
     switch (tool) {
       case 'order.read':
         return lookup(await records.get('orders', tenantId, input.orderId));
@@ -256,66 +219,71 @@ export function createToolHandlers(
       case 'purchase.request.read':
         return lookup(await records.get('purchaseRequests', tenantId, input.requestId));
       case 'purchase.order.draft': {
-        const draft = await buildDraft(tenantId, input.requestId);
-        if (!draft) return denied('not_found');
-        const vendor = await records.get('vendors', tenantId, draft.vendorId);
-        const skus = await Promise.all(
-          draft.lines.map((line) => records.get('skus', tenantId, line.skuId)),
-        );
-        if (!vendor || skus.some((sku) => !sku)) return denied('not_found');
-        const approval = prepare(context, poIntent(draft));
+        const current = await purchase(tenantId, input.requestId);
+        if (!current) return denied('not_found');
+        const { draft, intent } = current;
+        const approval = prepare(intent);
         if ('code' in approval) return approval;
-        drafts.set(draft.id, draft);
+        state.rows.artifact.set(draft.id, draft);
         return ok({ draft, approval });
       }
       case 'purchase.order.approve': {
-        const stored = drafts.get(input.draftId);
-        if (stored?.tenantId !== tenantId) return denied('not_found');
-        const current = await buildDraft(tenantId, stored.requestId);
-        if (current?.id !== stored.id) return denied('invalid_approval');
-
-        return approvedEffect(
-          context,
-          poIntent(current),
-          current.requestId,
-          input.approvalId,
-          async () => {
-            const po: PurchaseOrder = {
-              id: 'po-' + digest([tenantId, current.requestId]),
-              draft: current,
-              approvalId: input.approvalId,
-              status: 'approved',
-            };
-            return (await records.createPurchaseOrder(structuredClone(po)))
-              ? ok(po)
-              : denied('invalid_approval');
+        const stored = state.rows.artifact.get(input.draftId);
+        if (!stored || !('requestId' in stored)) return denied('not_found');
+        const current = await purchase(tenantId, stored.requestId);
+        if (current?.draft.id !== stored.id) return denied('invalid_approval');
+        const { draft, intent } = current;
+        return approvedEffect(intent, input.approvalId, {
+          kind: 'purchase',
+          order: {
+            id: 'po-' + digest([tenantId, draft.requestId]),
+            draft,
+            approvalId: input.approvalId,
+            status: 'approved',
           },
-        );
+        });
       }
       case 'collections.email.draft':
-        return preview(tenantId, input.invoiceId, 'email');
+        return preview(input.invoiceId, 'email');
       case 'message.preview':
-        return preview(tenantId, input.invoiceId, input.channel);
+        return preview(input.invoiceId, input.channel);
       case 'collections.email.send':
-        return send(context, tool, 'email', input);
       case 'collections.voice.send':
-        return send(context, tool, 'voice', input);
       case 'collections.sms.send':
-        return send(context, tool, 'sms', input);
-      case 'workflow.template.run':
-        return workflow(context, input);
+        return send(channels[tool], input);
+      case 'workflow.template.run': {
+        const { templateId, mode, approvalId } = input;
+        const previews = await workflowPreviews(tenantId);
+        if (mode === 'preview') {
+          return ok({
+            runId: 'run-' + actionId,
+            templateId,
+            status: 'previewed' as const,
+            previews,
+            receipts: [],
+          });
+        }
+        if (approvalId !== null && !providers?.messages?.email) return unavailable();
+        return approvedEffect(workflowIntent(templateId, previews), approvalId, {
+          kind: 'workflow',
+          templateId,
+          previews,
+        });
+      }
       case 'fraud.score': {
         const order = await records.get('orders', tenantId, input.orderId);
         if (!order) return denied('not_found');
         return providers?.scoring ? ok(await providers.scoring.fraud(order)) : unavailable();
       }
       case 'forecast.run':
-        if ((input.series === 'sku_demand') !== (input.skuId !== null)) {
-          return invalidInput('SKU is required only for SKU demand.');
+        if (input.series === 'sku_demand' && input.skuId === null) {
+          return invalidInput('SKU is required for SKU demand.');
         }
-        if (input.skuId && !(await records.get('skus', tenantId, input.skuId)))
+        if (input.skuId !== null && !(await records.get('skus', tenantId, input.skuId)))
           return denied('not_found');
-        return providers?.scoring ? ok(await providers.scoring.forecast(input)) : unavailable();
+        return providers?.scoring
+          ? ok(await providers.scoring.forecast(input, tenantId))
+          : unavailable();
       case 'profile.run': {
         const customer = await records.get('customers', tenantId, input.customerId);
         if (!customer) return denied('not_found');
@@ -349,5 +317,7 @@ export function createToolHandlers(
         if (!acceptsRoute(input.route)) return denied('forbidden');
         return providers?.llm ? ok(await providers.llm.complete(input)) : unavailable();
     }
-  };
+  }
+
+  return { dispatch, currentIntent };
 }

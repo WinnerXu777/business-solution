@@ -19,6 +19,7 @@ import {
   type UsageCounterEvent,
 } from '@bs/contracts';
 import type { ToolGateway } from './index.ts';
+import { createFixtureScoringAdapter } from '../../adapters/src/scoring/fixture.ts';
 
 const policyVersion = 'fixture-policy-v1';
 const approverId = 'actor-approver';
@@ -78,7 +79,11 @@ export class FakeGateway implements ToolGateway {
   constructor(options: Options = {}) {
     this.fixtures = structuredClone(options.fixtures ?? loadDemoFixtures());
     this.records = createFixtureRecords(this.fixtures);
-    this.providers = options.providers ?? createFakeProviders();
+    const defaults = createFakeProviders();
+    this.providers = options.providers ?? {
+      ...defaults,
+      scoring: { ...defaults.scoring, forecast: createFixtureScoringAdapter().forecast },
+    };
     this.now = options.now ?? (() => this.fixtures.asOf);
   }
 
@@ -472,16 +477,17 @@ export class FakeGateway implements ToolGateway {
       }
       case 'forecast.run': {
         const isDemand = input.series === 'sku_demand';
-        if (isDemand !== (input.skuId !== null)) {
+        if (isDemand && input.skuId === null) {
           return {
             state: 'failed',
             code: 'invalid_input',
-            message: 'SKU is required only for SKU demand.',
+            message: 'SKU is required for SKU demand.',
             retryable: false,
           };
         }
-        if (input.skuId && !this.records.sku(tenantId, input.skuId)) return denied('not_found');
-        return ok(await this.providers.scoring.forecast(input));
+        if (input.skuId !== null && !this.records.sku(tenantId, input.skuId))
+          return denied('not_found');
+        return ok(await this.providers.scoring.forecast(input, tenantId));
       }
       case 'profile.run': {
         const customer = this.records.customer(tenantId, input.customerId);

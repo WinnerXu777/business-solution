@@ -25,11 +25,12 @@ export interface MessageAdapter {
     preview: MessagePreview,
     actionId: string,
   ): ProviderResult<DeliveryReceipt | Failed | Unknown>;
+  reconcile?(actionId: string): ProviderResult<DeliveryReceipt | 'not_applied' | 'unknown'>;
 }
 
 export interface ScoringAdapter {
   fraud(order: Order): ProviderResult<ScoreFraudOutput>;
-  forecast(input: RunForecastInput): ProviderResult<RunForecastOutput>;
+  forecast(input: RunForecastInput, tenantId: string): ProviderResult<RunForecastOutput>;
   profile(customer: Customer): ProviderResult<RunProfileOutput>;
 }
 

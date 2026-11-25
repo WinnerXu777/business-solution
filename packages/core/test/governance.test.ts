@@ -11,6 +11,12 @@ import {
   type ToolRequestMap,
 } from '@bs/contracts';
 import { GovernedGateway } from '../src/governance/index.ts';
+import { verifyAuditExport } from '../src/governance/audit.ts';
+import {
+  MemoryGovernanceStore,
+  type GovernanceStore,
+  type TenantState,
+} from '../src/governance/store.ts';
 
 const fixtures = loadDemoFixtures();
 const [operator, approver, reader, worker, isolation] = fixtures.grants;
@@ -136,6 +142,8 @@ for (const change of ['material', 'source version', 'policy version', 'expiry'] 
     );
     assert.equal(code(denied), 'invalid_approval');
     assert.equal(gateway.usage().length, 1);
+    assert.deepEqual(await gateway.listApprovals(operator.tenantId, 'pending'), []);
+    assert.equal((await gateway.listApprovals(operator.tenantId, 'denied'))[0].id, approval.id);
   });
 }
 
@@ -183,6 +191,217 @@ test('roles, tenant scope, module flags and quota govern new work', async () => 
   assert.equal(
     code(await call(gateway, 'fraud.score', { orderId: 'ord-003' }, 'disabled')),
     'module_disabled',
+  );
+});
+
+async function prepareEmail(gateway: GovernedGateway) {
+  const preview = await call(
+    gateway,
+    'message.preview',
+    { invoiceId: 'inv-001', channel: 'email' },
+    'preview',
+  );
+  assert.equal(preview.state, 'ok');
+  const previewId = preview.output.id;
+  const pending = await call(
+    gateway,
+    'collections.email.send',
+    { previewId, approvalId: null },
+    'prepare',
+  );
+  assert.equal(pending.state, 'pending_approval');
+  return { previewId, approvalId: pending.approval.id };
+}
+
+test('only the designated tenant approver can reject and rejection stays in the inbox history', async () => {
+  const gateway = new GovernedGateway({ now: clock });
+  const { previewId, approvalId } = await prepareEmail(gateway);
+  const reason = 'Synthetic reason for inv-001';
+  assert.deepEqual(await gateway.listApprovals(isolation.tenantId), []);
+  assert.equal(
+    code(await gateway.reject(envelope('reject', operator), approvalId, reason)),
+    'forbidden',
+  );
+  const scope = envelope('reject', approver);
+  const rejected = await gateway.reject(scope, approvalId, reason);
+  assert.equal(rejected.state, 'denied');
+  assert.ok(!('code' in rejected));
+  assert.deepEqual(await gateway.reject(scope, approvalId, reason), rejected);
+  assert.deepEqual(await gateway.listApprovals(operator.tenantId, 'pending'), []);
+  assert.deepEqual(await gateway.listApprovals(operator.tenantId, 'denied'), [rejected]);
+  assert.equal(code(await gateway.signApproval(scope, approvalId)), 'invalid_approval');
+  for (const key of ['prepare', 'new-prepare']) {
+    assert.equal(
+      code(await call(gateway, 'collections.email.send', { previewId, approvalId: null }, key)),
+      'invalid_approval',
+    );
+  }
+  const audit = await gateway.exportAudit(operator.tenantId);
+  const { valid, head } = verifyAuditExport(audit);
+  assert.ok(valid && head);
+  assert.doesNotMatch(audit, /Synthetic reason|inv-001/);
+  assert.equal(verifyAuditExport(audit.replace('approval.reject', 'approval.sign')).valid, false);
+  const truncated = audit.trimEnd().split('\n').slice(0, -1).join('\n');
+  assert.equal(verifyAuditExport(truncated, head).valid, false);
+  assert.equal(await gateway.exportAudit(isolation.tenantId), '');
+});
+
+test('a failed intent transaction rolls back approval consumption, audit, and queue together', async () => {
+  const memory = new MemoryGovernanceStore();
+  const store: GovernanceStore = {
+    transact<T>(tenantId: string, operation: (state: TenantState) => T | Promise<T>) {
+      return memory.transact(tenantId, async (state) => {
+        const result = await operation(state);
+        if (state.rows.outbox.size) throw new Error('Simulated transaction failure');
+        return result;
+      });
+    },
+  };
+  const providers = createFakeProviders();
+  let sends = 0;
+  providers.messages.email = {
+    send() {
+      sends++;
+      throw new Error('Unexpected send');
+    },
+  };
+  const gateway = new GovernedGateway({ store, providers, now: clock });
+  const input = await prepareEmail(gateway);
+  await gateway.signApproval(envelope('sign', approver), input.approvalId);
+  const audit = await gateway.exportAudit(operator.tenantId);
+  const result = await call(gateway, 'collections.email.send', input, 'send');
+  assert.equal(result.state, 'failed');
+  assert.equal(sends, 0);
+  const [{ rows }] = memory.snapshot();
+  assert.equal(rows.outbox.size, 0);
+  assert.equal(rows.intent.size, 0);
+  assert.equal(rows.approval.get(input.approvalId)?.grant.state, 'approved');
+  assert.equal(await gateway.exportAudit(operator.tenantId), audit);
+});
+
+for (const reconciliation of ['applied', 'not_applied', 'unknown', 'changed_policy'] as const) {
+  test(`outbox recovery after a gateway restart handles ${reconciliation} without a duplicate write`, async () => {
+    const providers = createFakeProviders();
+    const memory = new MemoryGovernanceStore();
+    const simulated = {
+      channel: 'email',
+      status: 'simulated',
+      providerId: 'fixture-email',
+    } as const;
+    let workerTime = 0;
+    let policyVersion = 'policy-v1';
+    const sendKeys: string[] = [];
+    const reconciliationKeys: string[] = [];
+    providers.messages.email = {
+      send(_preview, key) {
+        sendKeys.push(key);
+        const [{ rows, audit }] = memory.snapshot();
+        assert.equal(rows.outbox.get(key)?.status, 'running');
+        assert.ok(rows.intent.has(key));
+        assert.equal(rows.outcome.get(key)?.result.state, 'unknown');
+        assert.ok(audit.some((entry) => entry.actionId === key && entry.state === 'unknown'));
+        if (sendKeys.length === 1) throw new Error('Lost provider response');
+        return { ...simulated, id: 'receipt-' + key };
+      },
+      reconcile(key) {
+        reconciliationKeys.push(key);
+        if (reconciliation === 'applied') return { ...simulated, id: 'receipt-' + key };
+        return reconciliation === 'unknown' ? 'unknown' : 'not_applied';
+      },
+    };
+    const options = {
+      store: memory,
+      providers,
+      now: clock,
+      policyVersion: () => policyVersion,
+      workerClock: () => workerTime,
+    };
+    const original = new GovernedGateway(options);
+    const input = await prepareEmail(original);
+    await original.signApproval(envelope('sign', approver), input.approvalId);
+    const first = await call(original, 'collections.email.send', input, 'send');
+    assert.equal(first.state, 'unknown');
+    const gateway = new GovernedGateway(options);
+    assert.deepEqual(await call(gateway, 'collections.email.send', input, 'send'), first);
+    assert.deepEqual(sendKeys, [first.actionId]);
+    if (reconciliation === 'changed_policy') policyVersion = 'policy-v2';
+    for (const seconds of [5, 10, 15]) {
+      workerTime = seconds * 1000;
+      await gateway.dispatchOutbox(operator.tenantId);
+    }
+    const outcome = await call(gateway, 'collections.email.send', input, 'send');
+    const queue = await gateway.listDeadLetters(operator.tenantId);
+    assert.deepEqual(await gateway.listDeadLetters(isolation.tenantId), []);
+    if (reconciliation === 'unknown') {
+      assert.deepEqual(outcome, first);
+      assert.equal(queue[0].reason, 'reconciliation_required');
+      assert.equal(queue[0].unresolved, true);
+      assert.deepEqual(reconciliationKeys, Array(3).fill(first.actionId));
+      assert.deepEqual(sendKeys, [first.actionId]);
+    } else {
+      assert.deepEqual(queue, []);
+      assert.deepEqual(reconciliationKeys, [first.actionId]);
+      assert.deepEqual(
+        sendKeys,
+        Array(reconciliation === 'not_applied' ? 2 : 1).fill(first.actionId),
+      );
+      assert.equal(outcome.state, reconciliation === 'changed_policy' ? 'denied' : 'ok');
+      assert.equal(
+        gateway.usage().filter((event) => event.outcomeId === first.actionId).length,
+        reconciliation === 'changed_policy' ? 0 : 1,
+      );
+    }
+  });
+}
+
+test('an expired claim reconciles a write whose settlement transaction was lost', async () => {
+  const memory = new MemoryGovernanceStore();
+  let loseSettlement = true;
+  let workerTime = 0;
+  let sends = 0;
+  const store: GovernanceStore = {
+    transact<T>(tenantId: string, operation: (state: TenantState) => T | Promise<T>) {
+      return memory.transact(tenantId, async (state) => {
+        const result = await operation(state);
+        if (
+          loseSettlement &&
+          [...state.rows.outbox.values()].some(({ status }) => status === 'completed')
+        ) {
+          loseSettlement = false;
+          throw new Error('Simulated crash before settlement');
+        }
+        return result;
+      });
+    },
+  };
+  const providers = createFakeProviders();
+  const receipt = (id: string) =>
+    ({ id, channel: 'email', status: 'simulated', providerId: 'fixture-email' }) as const;
+  providers.messages.email = {
+    send(_preview, id) {
+      sends++;
+      return receipt(id);
+    },
+    reconcile: receipt,
+  };
+  const options = { store, providers, now: clock, workerClock: () => workerTime };
+  const gateway = new GovernedGateway(options);
+  const input = await prepareEmail(gateway);
+  await gateway.signApproval(envelope('sign', approver), input.approvalId);
+  const first = await call(gateway, 'collections.email.send', input, 'send');
+  assert.equal(first.state, 'unknown');
+  assert.equal(memory.snapshot()[0].rows.outbox.get(first.actionId)?.status, 'running');
+  const restarted = new GovernedGateway(options);
+  workerTime = 60_000;
+  await restarted.dispatchOutbox(operator.tenantId);
+  const outcome = await call(restarted, 'collections.email.send', input, 'send');
+  assert.deepEqual(outcome, { state: 'ok', output: receipt(first.actionId) });
+  assert.equal(sends, 1);
+  assert.equal(
+    (await restarted.listUsage(operator.tenantId)).filter(
+      ({ outcomeId }) => outcomeId === first.actionId,
+    ).length,
+    1,
   );
 });
 

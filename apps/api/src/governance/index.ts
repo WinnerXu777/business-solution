@@ -1,8 +1,9 @@
-import type { Approval, CallEnvelope, Denied, ToolCall } from '@bs/contracts';
-import type { ToolGateway } from '@bs/core';
-import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
+import type { Approval, CallEnvelope, Denied, ToolCall, ToolName } from '@bs/contracts';
+import type { GovernedGateway, ToolGateway } from '@bs/core';
+import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from 'fastify';
 import { catalog, envelopeSchema, idSchema, validates } from './catalog.ts';
 import {
+  bearerToken,
   matchesIdentity,
   verifiedEnvelope,
   type IdentityVerifier,
@@ -17,11 +18,14 @@ export {
 } from './identity.ts';
 
 interface GovernanceOptions {
-  gateway: ToolGateway & {
-    signApproval?(envelope: CallEnvelope, approvalId: string): Promise<Approval | Denied>;
-  };
+  gateway: ToolGateway &
+    Partial<Pick<GovernedGateway, 'exportAudit' | 'listUsage' | 'listDeadLetters'>> & {
+      signApproval?(envelope: CallEnvelope, approvalId: string): Promise<Approval | Denied>;
+    };
   verifyIdentity: IdentityVerifier;
   allowedMcpOrigins?: readonly string[];
+  restToolsHandledElsewhere?: readonly ToolName[];
+  canReview?: (identity: VerifiedIdentity) => boolean;
 }
 
 export const governanceRoutes: FastifyPluginAsync<GovernanceOptions> = async (app, options) => {
@@ -29,7 +33,7 @@ export const governanceRoutes: FastifyPluginAsync<GovernanceOptions> = async (ap
   const { gateway, verifyIdentity } = options;
 
   app.addHook('onRequest', async (request, reply) => {
-    const token = /^Bearer ([^\s,]+)$/i.exec(request.headers.authorization ?? '')?.[1];
+    const token = bearerToken(request.headers.authorization);
     const identity = token && (await verifyIdentity(token));
     if (!identity) {
       return reply.header('WWW-Authenticate', 'Bearer').code(401).send({ error: 'unauthorized' });
@@ -44,7 +48,8 @@ export const governanceRoutes: FastifyPluginAsync<GovernanceOptions> = async (ap
     return identity;
   }
 
-  for (const { path, requestSchema } of catalog.values()) {
+  for (const [tool, { path, requestSchema }] of catalog) {
+    if (options.restToolsHandledElsewhere?.includes(tool)) continue;
     app.post(path, async (request, reply) => {
       if (!validates(request, requestSchema, request.body)) {
         return reply.code(400).send({ error: 'invalid_input' });
@@ -56,6 +61,26 @@ export const governanceRoutes: FastifyPluginAsync<GovernanceOptions> = async (ap
       }
       return gateway.call({ ...call, envelope: verifiedEnvelope(call.envelope, identity, 'rest') });
     });
+  }
+
+  const { exportAudit, listUsage, listDeadLetters } = gateway;
+  if (options.canReview && exportAudit && listUsage && listDeadLetters) {
+    async function preHandler(request: FastifyRequest, reply: FastifyReply) {
+      if (!options.canReview?.(identityOf(request))) {
+        return reply.code(403).send({ error: 'forbidden' });
+      }
+    }
+    app.get('/v1/governance/audit', { preHandler }, async (request, reply) =>
+      reply
+        .type('application/x-ndjson')
+        .send(await exportAudit.call(gateway, identityOf(request).tenantId)),
+    );
+    app.get('/v1/governance/usage', { preHandler }, (request) =>
+      listUsage.call(gateway, identityOf(request).tenantId),
+    );
+    app.get('/v1/governance/dead-letters', { preHandler }, (request) =>
+      listDeadLetters.call(gateway, identityOf(request).tenantId),
+    );
   }
 
   if (gateway.signApproval) {

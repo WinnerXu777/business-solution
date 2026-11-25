@@ -1,18 +1,48 @@
 import { randomUUID } from 'node:crypto';
-import type { Approval, ApprovalAction, CallEnvelope, Denied, Unknown } from '@bs/contracts';
+import type { Approval, ApprovalAction, CallEnvelope, Denied } from '@bs/contracts';
 import { denied, digest } from './results.ts';
+import type { StoredApproval } from './store.ts';
 
 export interface ApprovalIntent {
   tool: ApprovalAction;
   subjectId: string;
+  target: string;
   sourceVersion: number;
   material: unknown;
 }
 
+export function matchesBinding(
+  { grant, target }: StoredApproval,
+  intent: ApprovalIntent | undefined,
+  policyVersion: string,
+  now: string,
+) {
+  return (
+    intent !== undefined &&
+    target === intent.target &&
+    grant.tool === intent.tool &&
+    grant.subjectId === intent.subjectId &&
+    grant.sourceVersion === intent.sourceVersion &&
+    grant.materialHash === digest(intent.material) &&
+    grant.policyVersion === policyVersion &&
+    Date.parse(grant.expiresAt) > Date.parse(now)
+  );
+}
+
 export class ApprovalLedger {
-  private readonly grants = new Map<string, Approval>();
-  private readonly byIntent = new Map<string, string>();
-  private readonly holds = new Map<string, Unknown>();
+  private readonly rows: Map<string, StoredApproval>;
+
+  constructor(rows: Map<string, StoredApproval>) {
+    this.rows = rows;
+  }
+
+  get(id: string) {
+    return this.rows.get(id);
+  }
+
+  list() {
+    return [...this.rows.values()];
+  }
 
   prepare(
     envelope: CallEnvelope,
@@ -22,21 +52,20 @@ export class ApprovalLedger {
     now: string,
   ): Approval | Denied {
     const { tenantId, actor } = envelope;
-    const { tool, subjectId, sourceVersion, material } = intent;
-    const materialHash = digest(material);
-    const signature = digest([
-      tenantId,
-      actor.id,
-      approverId,
-      tool,
-      subjectId,
-      materialHash,
-      sourceVersion,
-      policyVersion,
-    ]);
-    const prior = this.grants.get(this.byIntent.get(signature) ?? '');
-    if (prior?.state === 'consumed') return denied('invalid_approval');
-    if (prior && this.isCurrent(prior, policyVersion, now)) return structuredClone(prior);
+    const { tool, subjectId, target, sourceVersion, material } = intent;
+    for (const row of this.rows.values()) {
+      const { grant } = row;
+      if (grant.tool !== tool || row.target !== target || grant.requestedBy !== actor.id) continue;
+      const current =
+        grant.approverId === approverId && matchesBinding(row, intent, policyVersion, now);
+      if (current) {
+        if (grant.state === 'consumed' || row.rejectionReason !== undefined)
+          return denied('invalid_approval');
+        if (grant.state !== 'denied') return grant;
+      } else if (grant.state === 'pending' || grant.state === 'approved') {
+        grant.state = 'denied';
+      }
+    }
 
     const grant: Approval = {
       id: 'approval-' + randomUUID(),
@@ -45,34 +74,22 @@ export class ApprovalLedger {
       approverId,
       tool,
       subjectId,
-      materialHash,
+      materialHash: digest(material),
       sourceVersion,
       policyVersion,
       expiresAt: new Date(Date.parse(now) + 60 * 60 * 1000).toISOString(),
       state: 'pending',
     };
-    this.grants.set(grant.id, grant);
-    this.byIntent.set(signature, grant.id);
-    return structuredClone(grant);
+    this.rows.set(grant.id, { grant, target });
+    return grant;
   }
 
-  get(id: string): Approval | undefined {
-    return structuredClone(this.grants.get(id));
-  }
-
-  sign(envelope: CallEnvelope, id: string, policyVersion: string, now: string): Approval | Denied {
-    const grant = this.grants.get(id);
-    if (
-      grant?.state !== 'pending' ||
-      grant.tenantId !== envelope.tenantId ||
-      grant.approverId !== envelope.actor.id ||
-      grant.requestedBy === envelope.actor.id ||
-      grant.tool === 'purchase.order.approve' ||
-      !this.isCurrent(grant, policyVersion, now)
-    )
-      return denied('invalid_approval');
-    grant.state = 'approved';
-    return structuredClone(grant);
+  canDecide(envelope: CallEnvelope, grant: Approval) {
+    return (
+      grant.tenantId === envelope.tenantId &&
+      grant.approverId === envelope.actor.id &&
+      grant.requestedBy !== envelope.actor.id
+    );
   }
 
   consume(
@@ -81,41 +98,20 @@ export class ApprovalLedger {
     id: string,
     policyVersion: string,
     now: string,
-  ): (() => void) | undefined {
-    const grant = this.grants.get(id);
-    const isPo = intent.tool === 'purchase.order.approve';
-    if (
-      !grant ||
-      grant.tenantId !== envelope.tenantId ||
-      grant.tool !== intent.tool ||
-      grant.subjectId !== intent.subjectId ||
-      grant.sourceVersion !== intent.sourceVersion ||
-      grant.materialHash !== digest(intent.material) ||
-      !this.isCurrent(grant, policyVersion, now)
-    )
-      return;
-    const actorId = envelope.actor.id;
-    const authorized = isPo
-      ? grant.state === 'pending' && grant.approverId === actorId && grant.requestedBy !== actorId
-      : grant.state === 'approved' && grant.requestedBy === actorId;
-    if (!authorized) return;
-    const priorState = grant.state;
+  ) {
+    const row = this.rows.get(id);
+    if (!row || row.grant.tenantId !== envelope.tenantId) return false;
+    const { grant } = row;
+    const authorized =
+      intent.tool === 'purchase.order.approve'
+        ? grant.state === 'pending' && this.canDecide(envelope, grant)
+        : grant.state === 'approved' && grant.requestedBy === envelope.actor.id;
+    if (!authorized || grant.tool !== intent.tool || row.target !== intent.target) return false;
+    if (!matchesBinding(row, intent, policyVersion, now)) {
+      grant.state = 'denied';
+      return false;
+    }
     grant.state = 'consumed';
-    // An explicitly retryable outcome can reuse the same grant while it is still current.
-    return () => {
-      grant.state = priorState;
-    };
-  }
-
-  getHold(tenantId: string, tool: ApprovalAction, target: string) {
-    return this.holds.get(digest([tenantId, tool, target]));
-  }
-
-  hold(tenantId: string, tool: ApprovalAction, target: string, outcome: Unknown) {
-    this.holds.set(digest([tenantId, tool, target]), outcome);
-  }
-
-  private isCurrent(grant: Approval, policyVersion: string, now: string) {
-    return grant.policyVersion === policyVersion && Date.parse(grant.expiresAt) > Date.parse(now);
+    return true;
   }
 }

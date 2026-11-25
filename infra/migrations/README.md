@@ -1,0 +1,13 @@
+# Local governance storage
+
+Run `node infra/migrate.mjs` with `DATABASE_URL` set to the local fixture PostgreSQL database before starting the API. The runner applies the numbered files in order, records their checksums, and uses a transaction and advisory lock to serialize migrations. Initialize the business fixtures with the existing seed or reset command. Fixture reset reloads the business tables. Use a fresh local Compose project for a clean governance history.
+
+With `DATABASE_URL` set, the API stores approvals, drafts, previews, intent, audit, idempotency outcomes, and usage in PostgreSQL. Apply the migrations before enabling this mode. PostgreSQL mode uses the wall clock so approval expiry survives a restart. Its fixture entitlement window is November 2026. Without `DATABASE_URL`, the app uses the synthetic clock and in-memory storage.
+
+An approved action commits its intent, audit entry, and outbox job before dispatch. The API tries the job once inline and checks for eligible work every five seconds in PostgreSQL mode. The worker uses the same tenant-scoped action ID across provider retries and derives a stable key for each message in a workflow. A lost provider response or an expired 60-second claim requires reconciliation. If the adapter confirms a prior write, the gateway records the receipt and meters it once. Retrying an uncertain write requires confirmation that no effect occurred and rechecks approval, source data, policy, and entitlement. After three failed attempts or three inconclusive checks, the job goes to review. A partially delivered workflow also goes to review. Mailpit is opt-in through `BS_MAILPIT=1` and uses the existing loopback-only fixture adapter. It has no automatic reconciliation.
+
+The gateway exposes `listApprovals(tenantId, state?)` and `reject(envelope, approvalId, reason)`. Callers supply a verified tenant for listing. Rejection requires the designated approver. Rejected and invalidated approvals both use the v1 `denied` state. The gateway stores explicit rejection reasons outside the audit export.
+
+Use an approver bearer to read `/v1/governance/dead-letters`, `/v1/governance/usage`, and `/v1/governance/audit` for the current workspace. An unresolved dead letter holds the target so another key cannot trigger a second effect. Review entries show stable action IDs, retry counts, and why the worker stopped.
+
+Audit exports are JSON Lines. Each record includes the prior record's hash and the SHA-256 hash of its own fields, including that prior hash. Save the latest hash separately to check for truncation or for replacement of the entire chain. The PostgreSQL audit trigger prevents ordinary updates, deletes, and truncation.
