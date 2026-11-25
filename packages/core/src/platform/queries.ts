@@ -21,7 +21,7 @@ export interface UsageFilters extends TimeFilters {
   module?: ModuleId;
 }
 
-function timestamp(input: string) {
+export function timestamp(input: string) {
   const result = Date.parse(input);
   if (
     !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/.test(input) ||

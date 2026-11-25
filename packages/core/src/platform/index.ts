@@ -1,6 +1,8 @@
 import { loadDemoFixtures, type AuditEntry, type DemoFixtures } from '@bs/contracts';
 import { GovernedGateway } from '../governance/index.ts';
 import { PlatformAudit, repositoryAuditSink, type AuditSink } from './audit.ts';
+import { BillingLedger, type BillingOptions, type BillingRepositories } from './billing.ts';
+import { fixtureByoPrice } from './billing-gateway.ts';
 import { ConnectionStore, type StoredConnection } from './connections.ts';
 import { EntitlementStore } from './entitlements.ts';
 import { PlatformGateway } from './gateway.ts';
@@ -12,10 +14,23 @@ import {
   type fixtureDataClasses,
 } from './providers.ts';
 import { PlatformQueries } from './queries.ts';
-import { MemoryTenantRepository, type TenantRepository } from './repository.ts';
+import {
+  MemoryTenantRepository,
+  type PlatformPersistence,
+  type TenantRepository,
+} from './repository.ts';
+import {
+  CredentialVault,
+  readVaultMasterKey,
+  type StoredCredential,
+  type WrappedTenantKey,
+} from './vault.ts';
 
 export { PlatformError, type MutationContext, type PlatformCode } from './audit.ts';
 export { ConnectionStore, type ConnectionInput } from './connections.ts';
+export { BillingLedger, type PlanInput, type BillingOptions } from './billing.ts';
+export { billingSkus, catalogPriceVersion, type SkuId } from './billing-catalog.ts';
+export { type BillingUsage, type ProviderPrice } from './billing-usage.ts';
 export { EntitlementStore, ModuleCatalog } from './entitlements.ts';
 export { PlatformGateway, type PlatformApproval } from './gateway.ts';
 export {
@@ -28,10 +43,19 @@ export {
   capabilities,
   CapabilityBindingStore,
   ProviderRegistry,
+  type BindingCall,
   type BindingInput,
+  type Capability,
+  type ResolvedBinding,
 } from './providers.ts';
 export { PlatformQueries, type AuditFilters, type UsageFilters } from './queries.ts';
-export { MemoryTenantRepository, type TenantRepository } from './repository.ts';
+export { PostgresPlatformPersistence, type QueryPool } from './postgres.ts';
+export {
+  MemoryTenantRepository,
+  type PlatformPersistence,
+  type TenantRepository,
+} from './repository.ts';
+export { type CredentialAccessor, type CredentialInput } from './vault.ts';
 
 interface PlatformOptions {
   fixtures?: DemoFixtures;
@@ -39,11 +63,18 @@ interface PlatformOptions {
   now?: () => string;
   auditSink?: AuditSink;
   dataClasses?: typeof fixtureDataClasses;
+  persistence?: PlatformPersistence;
+  billing?: BillingOptions;
+  fixtureUsageBridge?: boolean;
+  vaultMasterKey?: Uint8Array;
   repositories?: {
     audit?: TenantRepository<AuditEntry>;
     entitlements?: TenantRepository<boolean>;
     bindings?: TenantRepository<BindingRevision[]>;
     connections?: TenantRepository<StoredConnection>;
+    billing?: Partial<BillingRepositories>;
+    credentialKeys?: TenantRepository<WrappedTenantKey>;
+    credentials?: TenantRepository<StoredCredential>;
   };
 }
 
@@ -80,7 +111,19 @@ export function createPlatformServices(options: PlatformOptions = {}) {
   const startedAt = performance.now();
   const epoch = Date.parse(fixtures.asOf);
   const now = options.now ?? (() => new Date(epoch + performance.now() - startedAt).toISOString());
-  const auditEntries = options.repositories?.audit ?? new MemoryTenantRepository<AuditEntry>();
+  if (options.persistence && (options.repositories || options.auditSink)) {
+    throw new Error(
+      'Transactional platform persistence must own all state and audit repositories.',
+    );
+  }
+  function repo<Row>(collection: string, override?: TenantRepository<Row>) {
+    return (
+      options.persistence?.repository<Row>(collection) ??
+      override ??
+      new MemoryTenantRepository<Row>()
+    );
+  }
+  const auditEntries = repo<AuditEntry>('audit', options.repositories?.audit);
   const localSink = repositoryAuditSink(auditEntries);
   const audit = new PlatformAudit(
     {
@@ -90,20 +133,45 @@ export function createPlatformServices(options: PlatformOptions = {}) {
       },
     },
     now,
+    options.persistence,
   );
   const directory = new TenantDirectory(fixtures);
   const entitlements = new EntitlementStore(
     fixtures.entitlements,
-    options.repositories?.entitlements ?? new MemoryTenantRepository(),
+    repo('entitlements', options.repositories?.entitlements),
     audit,
     now,
   );
   const providers = new ProviderRegistry();
+  const vault = new CredentialVault(
+    options.vaultMasterKey ?? readVaultMasterKey(),
+    repo('credential_keys', options.repositories?.credentialKeys),
+    repo('credentials', options.repositories?.credentials),
+    audit,
+    now,
+  );
+  const billingRepositories = options.repositories?.billing;
+  const billing = new BillingLedger(
+    {
+      plans: repo('billing_plans', billingRepositories?.plans),
+      usage: repo('billing_usage', billingRepositories?.usage),
+      invoices: repo('billing_invoices', billingRepositories?.invoices),
+      credits: repo('billing_credits', billingRepositories?.credits),
+    },
+    audit,
+    now,
+    fixtures.asOf,
+    {
+      ...options.billing,
+      providerPrices: [fixtureByoPrice, ...(options.billing?.providerPrices ?? [])],
+    },
+  );
   const bindings = new CapabilityBindingStore(
     providers,
-    options.repositories?.bindings ?? new MemoryTenantRepository(),
+    repo('bindings', options.repositories?.bindings),
     audit,
     options.dataClasses,
+    vault,
   );
   const gateway = new PlatformGateway(
     options.gateway ?? new GovernedGateway({ fixtures, now }),
@@ -111,6 +179,7 @@ export function createPlatformServices(options: PlatformOptions = {}) {
     entitlements,
     audit,
     now,
+    options.fixtureUsageBridge === false ? undefined : billing,
   );
 
   return {
@@ -118,9 +187,12 @@ export function createPlatformServices(options: PlatformOptions = {}) {
     entitlements,
     providers,
     bindings,
+    resolveBinding: bindings.resolveBinding.bind(bindings),
+    billing,
+    vault,
     gateway,
     connections: new ConnectionStore(
-      options.repositories?.connections ?? new MemoryTenantRepository(),
+      repo('connections', options.repositories?.connections),
       audit,
       now,
     ),

@@ -4,9 +4,11 @@ import {
   type AuditFilters,
   type BindingInput,
   type ConnectionInput,
+  type CredentialInput,
   type MutationContext,
   type PlatformApproval,
   type PlatformServices,
+  type PlanInput,
   type UsageFilters,
 } from '../../../../packages/core/src/platform/index.ts';
 import { validates } from '../governance/catalog.ts';
@@ -36,6 +38,10 @@ function query<Input>(request: FastifyRequest, schema: Record<string, unknown>) 
 }
 
 const schemas = document.components.schemas;
+const credentialCreateSchema = {
+  ...schemas.CredentialCreate,
+  properties: { ...schemas.CredentialCreate.properties, providerId: schemas.Id },
+};
 const statusFor = {
   forbidden: 403,
   not_found: 404,
@@ -55,7 +61,17 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     FastifyRequest,
     NonNullable<ReturnType<typeof services.directory.resolve>>
   >();
-  const { directory, gateway, entitlements, bindings, providers, connections, queries } = services;
+  const {
+    directory,
+    gateway,
+    entitlements,
+    bindings,
+    providers,
+    connections,
+    queries,
+    billing,
+    vault,
+  } = services;
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
@@ -190,6 +206,48 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
   });
   app.delete<{ Params: { id: string } }>(base + '/connections/:id', async (request, reply) => {
     await connections.delete(context(request, true), request.params.id);
+    return reply.code(204).send();
+  });
+
+  app.get(base + '/billing/plan', async (request) => billing.plan(tenantOf(request)));
+  app.get(base + '/billing/skus', async () => billing.skus());
+  app.post(base + '/billing/plan', async (request) => {
+    const actor = context(request, true);
+    const input = validate<PlanInput>(request, schemas.BillingPlanUpdate, request.body);
+    return billing.changePlan(actor, input);
+  });
+  app.get(base + '/billing/invoices', async (request) => billing.invoices(tenantOf(request)));
+  app.get<{ Params: { id: string } }>(base + '/billing/invoices/:id', async (request) =>
+    billing.invoice(tenantOf(request), request.params.id),
+  );
+  app.post<{ Params: { id: string } }>(base + '/billing/invoices/:id/finalize', async (request) =>
+    billing.finalize(context(request, true), request.params.id),
+  );
+
+  app.get(base + '/credentials', async (request) =>
+    (await vault.list(tenantOf(request)))
+      .filter(({ status }) => status === 'active')
+      .map(({ ref }) => ({ ref })),
+  );
+  app.post(base + '/credentials', async (request, reply) => {
+    const actor = context(request, true);
+    const input = validate<CredentialInput>(request, credentialCreateSchema, request.body);
+    if (!providers.get(input.capability, input.providerId)) throw new PlatformError('not_found');
+    const { ref } = await vault.create(actor, input);
+    return reply.code(201).send({ ref });
+  });
+  app.post<{ Params: { ref: string } }>(base + '/credentials/:ref/rotate', async (request) => {
+    const actor = context(request, true);
+    const { secret } = validate<{ secret: string }>(
+      request,
+      schemas.CredentialRotate,
+      request.body,
+    );
+    const { ref } = await vault.rotate(actor, request.params.ref, secret);
+    return { ref };
+  });
+  app.delete<{ Params: { ref: string } }>(base + '/credentials/:ref', async (request, reply) => {
+    await vault.revoke(context(request, true), request.params.ref);
     return reply.code(204).send();
   });
 

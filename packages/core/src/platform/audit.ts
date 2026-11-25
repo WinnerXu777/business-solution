@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AuditEntry, CallEnvelope, Denied } from '@bs/contracts';
 import type { PlatformIdentity } from './identity.ts';
-import type { TenantRepository } from './repository.ts';
+import { PlatformQueue, type PlatformPersistence, type TenantRepository } from './repository.ts';
 
 export type PlatformCode = Exclude<Denied['code'], 'suppressed'> | 'unavailable';
 
@@ -27,13 +27,25 @@ export interface MutationContext extends PlatformIdentity {
 export class PlatformAudit {
   private readonly sink: AuditSink;
   private readonly now: () => string;
+  private readonly persistence?: PlatformPersistence;
+  private readonly queue = new PlatformQueue();
 
-  constructor(sink: AuditSink, now: () => string) {
+  constructor(sink: AuditSink, now: () => string, persistence?: PlatformPersistence) {
     this.sink = sink;
     this.now = now;
+    this.persistence = persistence;
   }
 
-  record(context: MutationContext, tool: string, state: AuditEntry['state'] = 'ok') {
+  transaction<Result>(tenantId: string, run: () => Promise<Result>) {
+    return this.persistence?.transaction(tenantId, run) ?? this.queue.run(run);
+  }
+
+  record(
+    context: MutationContext,
+    tool: string,
+    state: AuditEntry['state'] = 'ok',
+    subjectId?: string,
+  ) {
     return this.sink.append({
       id: 'audit-' + randomUUID(),
       tenantId: context.tenantId,
@@ -41,7 +53,7 @@ export class PlatformAudit {
       source: context.source,
       traceId: context.traceId,
       correlationId: context.correlationId,
-      actionId: 'action-' + randomUUID(),
+      actionId: subjectId ?? 'action-' + randomUUID(),
       tool,
       state,
       policyVersion: 'fixture-policy-v1',

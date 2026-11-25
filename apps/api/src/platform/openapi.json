@@ -837,6 +837,392 @@
           }
         }
       }
+    },
+    "/platform/v1/billing/plan": {
+      "get": {
+        "operationId": "getBillingPlan",
+        "summary": "Read the current subscription and window allowances",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "changeBillingPlan",
+        "summary": "Replace add-ons with immediate proration (admin)",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingPlan"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BillingPlanUpdate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform/v1/billing/skus": {
+      "get": {
+        "operationId": "listBillingSkus",
+        "summary": "List the CAD SKU catalogue",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/BillingSku"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/billing/invoices": {
+      "get": {
+        "operationId": "listBillingInvoices",
+        "summary": "List tenant invoices and credit notes",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingInvoices"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/platform/v1/billing/invoices/{id}": {
+      "get": {
+        "operationId": "getBillingInvoice",
+        "summary": "Read a tenant invoice",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BillingInvoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^invoice-[0-9]{4}-(0[1-9]|1[0-2])-[a-f0-9]{24}$"
+            }
+          }
+        ]
+      }
+    },
+    "/platform/v1/billing/invoices/{id}/finalize": {
+      "post": {
+        "operationId": "finalizeBillingInvoice",
+        "summary": "Finalize a closed window with simulated settlement (admin)",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FinalInvoice"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^invoice-[0-9]{4}-(0[1-9]|1[0-2])-[a-f0-9]{24}$"
+            }
+          }
+        ]
+      }
+    },
+    "/platform/v1/credentials": {
+      "get": {
+        "operationId": "listCredentialReferences",
+        "summary": "List active credential references",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CredentialReference"
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      },
+      "post": {
+        "operationId": "createCredential",
+        "summary": "Store a provider credential (admin)",
+        "responses": {
+          "201": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialReference"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialCreate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform/v1/credentials/{ref}/rotate": {
+      "post": {
+        "operationId": "rotateCredential",
+        "summary": "Replace a secret at the same reference (admin)",
+        "responses": {
+          "200": {
+            "description": "Success",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CredentialReference"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^vault://cred-[0-9a-f-]{36}$"
+            },
+            "description": "Percent-encode the entire credential reference as a path segment."
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CredentialRotate"
+              }
+            }
+          }
+        }
+      }
+    },
+    "/platform/v1/credentials/{ref}": {
+      "delete": {
+        "operationId": "revokeCredential",
+        "summary": "Revoke a provider credential (admin)",
+        "responses": {
+          "204": {
+            "description": "Revoked"
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "403": {
+            "$ref": "#/components/responses/Forbidden"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "ref",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "pattern": "^vault://cred-[0-9a-f-]{36}$"
+            },
+            "description": "Percent-encode the entire credential reference as a path segment."
+          }
+        ]
+      }
     }
   },
   "components": {
@@ -1616,6 +2002,550 @@
           }
         },
         "required": ["id", "kind", "name", "scopes", "createdAt", "lastUsedAt", "secret"]
+      },
+      "BillingPlanUpdate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "addOns": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "erp",
+                "crm",
+                "inbound-chat",
+                "inbound-voice",
+                "procurement",
+                "collections-email",
+                "collections-outbound",
+                "workflows",
+                "fraud",
+                "forecasting",
+                "profiling"
+              ]
+            }
+          },
+          "overageLimitCents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["addOns"]
+      },
+      "BillingPlan": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "addOns": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "erp",
+                "crm",
+                "inbound-chat",
+                "inbound-voice",
+                "procurement",
+                "collections-email",
+                "collections-outbound",
+                "workflows",
+                "fraud",
+                "forecasting",
+                "profiling"
+              ]
+            }
+          },
+          "overageLimitCents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "version": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "priceVersion": {
+            "type": "string"
+          },
+          "currency": {
+            "const": "CAD"
+          },
+          "effectiveAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "monthlyCents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "allowances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "skuId": {
+                  "enum": [
+                    "platform",
+                    "erp",
+                    "crm",
+                    "inbound-chat",
+                    "inbound-voice",
+                    "procurement",
+                    "collections-email",
+                    "collections-outbound",
+                    "workflows",
+                    "fraud",
+                    "forecasting",
+                    "profiling"
+                  ]
+                },
+                "unit": {
+                  "type": "string"
+                },
+                "included": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "used": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "overage": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                }
+              },
+              "required": ["skuId", "unit", "included", "used", "overage"]
+            }
+          }
+        },
+        "required": [
+          "addOns",
+          "overageLimitCents",
+          "version",
+          "priceVersion",
+          "currency",
+          "effectiveAt",
+          "windowStart",
+          "windowEnd",
+          "monthlyCents",
+          "allowances"
+        ]
+      },
+      "BillingSku": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "enum": [
+              "platform",
+              "erp",
+              "crm",
+              "inbound-chat",
+              "inbound-voice",
+              "procurement",
+              "collections-email",
+              "collections-outbound",
+              "workflows",
+              "fraud",
+              "forecasting",
+              "profiling"
+            ]
+          },
+          "name": {
+            "type": "string"
+          },
+          "monthlyCents": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "currency": {
+            "const": "CAD"
+          },
+          "priceVersion": {
+            "type": "string"
+          },
+          "meters": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "unit": {
+                  "type": "string"
+                },
+                "allowance": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 9007199254740991
+                },
+                "aggregation": {
+                  "enum": ["sum", "peak", "weekly_peak"]
+                }
+              },
+              "required": ["unit", "allowance", "aggregation"]
+            }
+          }
+        },
+        "required": ["id", "name", "monthlyCents", "currency", "priceVersion", "meters"]
+      },
+      "InvoiceLine": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "skuId": {
+            "enum": [
+              "platform",
+              "erp",
+              "crm",
+              "inbound-chat",
+              "inbound-voice",
+              "procurement",
+              "collections-email",
+              "collections-outbound",
+              "workflows",
+              "fraud",
+              "forecasting",
+              "profiling"
+            ]
+          },
+          "kind": {
+            "enum": ["subscription", "overage", "provider"]
+          },
+          "description": {
+            "type": "string"
+          },
+          "priceVersion": {
+            "type": "string"
+          },
+          "amountCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "providerId": {
+            "type": "string"
+          },
+          "unit": {
+            "type": "string"
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "chargeMode": {
+            "enum": ["informational", "pass_through", "uplift"]
+          }
+        },
+        "required": ["skuId", "kind", "description", "priceVersion", "amountCents"]
+      },
+      "InvoiceTax": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "type": "string"
+          },
+          "region": {
+            "type": "string"
+          },
+          "basisPoints": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 9007199254740991
+          },
+          "amountCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          }
+        },
+        "required": ["code", "region", "basisPoints", "amountCents"]
+      },
+      "InvoiceDraft": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^invoice-[0-9]{4}-(0[1-9]|1[0-2])-[a-f0-9]{24}$"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "currency": {
+            "const": "CAD"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLine"
+            }
+          },
+          "subtotalCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "tax": {
+            "$ref": "#/components/schemas/InvoiceTax"
+          },
+          "totalCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "const": "draft"
+          }
+        },
+        "required": [
+          "id",
+          "windowStart",
+          "windowEnd",
+          "currency",
+          "lines",
+          "subtotalCents",
+          "tax",
+          "totalCents",
+          "status"
+        ]
+      },
+      "FinalInvoice": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^invoice-[0-9]{4}-(0[1-9]|1[0-2])-[a-f0-9]{24}$"
+          },
+          "windowStart": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "windowEnd": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "currency": {
+            "const": "CAD"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLine"
+            }
+          },
+          "subtotalCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "tax": {
+            "$ref": "#/components/schemas/InvoiceTax"
+          },
+          "totalCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "status": {
+            "const": "finalized"
+          },
+          "finalizedAt": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "settlement": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "const": "simulated"
+              },
+              "reference": {
+                "type": "string"
+              }
+            },
+            "required": ["status", "reference"]
+          }
+        },
+        "required": [
+          "id",
+          "windowStart",
+          "windowEnd",
+          "currency",
+          "lines",
+          "subtotalCents",
+          "tax",
+          "totalCents",
+          "status",
+          "finalizedAt",
+          "settlement"
+        ]
+      },
+      "BillingInvoice": {
+        "oneOf": [
+          {
+            "$ref": "#/components/schemas/InvoiceDraft"
+          },
+          {
+            "$ref": "#/components/schemas/FinalInvoice"
+          }
+        ]
+      },
+      "BillingCreditNote": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "currency": {
+            "const": "CAD"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InvoiceLine"
+            }
+          },
+          "subtotalCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "tax": {
+            "$ref": "#/components/schemas/InvoiceTax"
+          },
+          "totalCents": {
+            "type": "integer",
+            "minimum": -9007199254740991,
+            "maximum": 9007199254740991
+          },
+          "id": {
+            "type": "string"
+          },
+          "invoiceId": {
+            "type": "string",
+            "pattern": "^invoice-[0-9]{4}-(0[1-9]|1[0-2])-[a-f0-9]{24}$"
+          },
+          "reasonRef": {
+            "type": "string"
+          },
+          "issuedAt": {
+            "type": "string",
+            "format": "date-time"
+          }
+        },
+        "required": [
+          "currency",
+          "lines",
+          "subtotalCents",
+          "tax",
+          "totalCents",
+          "id",
+          "invoiceId",
+          "reasonRef",
+          "issuedAt"
+        ]
+      },
+      "BillingInvoices": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillingInvoice"
+            }
+          },
+          "creditNotes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BillingCreditNote"
+            }
+          }
+        },
+        "required": ["items", "creditNotes"]
+      },
+      "CredentialReference": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "ref": {
+            "type": "string",
+            "pattern": "^vault://cred-[0-9a-f-]{36}$"
+          }
+        },
+        "required": ["ref"]
+      },
+      "CredentialCreate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "enum": [
+              "llm",
+              "embeddings",
+              "chat",
+              "contact-centre",
+              "telephony",
+              "speech-to-text",
+              "text-to-speech",
+              "email",
+              "sms",
+              "crm",
+              "erp",
+              "accounting",
+              "ml-scoring",
+              "workflow"
+            ]
+          },
+          "providerId": {
+            "$ref": "#/components/schemas/Id"
+          },
+          "secret": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "writeOnly": true
+          }
+        },
+        "required": ["capability", "providerId", "secret"]
+      },
+      "CredentialRotate": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "secret": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16384,
+            "writeOnly": true
+          }
+        },
+        "required": ["secret"]
       }
     },
     "responses": {

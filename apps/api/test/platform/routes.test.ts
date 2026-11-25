@@ -34,6 +34,7 @@ async function setup(t: TestContext) {
   const now = () => instant;
   const providers = createFakeProviders();
   const services = createPlatformServices({
+    vaultMasterKey: Buffer.alloc(32, 0x34),
     now,
     gateway: new GovernedGateway({ now, providers }),
   });
@@ -373,4 +374,73 @@ test('connection creation returns the one-time secret and deletion is tenant-sco
   assert.equal((await request(path, 'admin', 'DELETE')).statusCode, 204);
   assert.deepEqual((await request('/connections')).json(), []);
   assert.ok(!(await request('/audit')).body.includes(secret));
+});
+
+test('billing routes expose catalog and prorated drafts, and finalize the same tenant invoice once', async (t) => {
+  const { request, setTime } = await setup(t);
+  const catalog = await request('/billing/skus');
+  assert.equal(catalog.statusCode, 200);
+  assert.equal(catalog.json().length, 12);
+  assert.equal((await request('/billing/plan')).json().monthlyCents, 65_000);
+  assert.equal(
+    (await request('/billing/plan', 'reader', 'POST', { addOns: ['erp'] })).statusCode,
+    403,
+  );
+  assert.equal(
+    (await request('/billing/plan', 'admin', 'POST', { addOns: ['platform'] })).statusCode,
+    400,
+  );
+  const changed = await request('/billing/plan', 'admin', 'POST', { addOns: ['erp'] });
+  assert.equal(changed.statusCode, 200);
+  assert.equal(changed.json().monthlyCents, 105_000);
+  const list = await request('/billing/invoices');
+  assert.equal(list.statusCode, 200);
+  const [draft] = list.json().items;
+  assert.equal(draft.status, 'draft');
+  const path = '/billing/invoices/' + draft.id;
+  assert.deepEqual((await request(path)).json(), draft);
+  assert.equal((await request(path, 'other')).statusCode, 404);
+  assert.equal((await request(path + '/finalize', 'admin', 'POST')).statusCode, 403);
+  setTime('2026-12-01T00:00:00Z');
+  assert.equal((await request(path + '/finalize', 'reader', 'POST')).statusCode, 403);
+  const finalized = await request(path + '/finalize', 'admin', 'POST');
+  assert.equal(finalized.statusCode, 200);
+  assert.equal(finalized.json().settlement.status, 'simulated');
+  assert.deepEqual((await request(path + '/finalize', 'admin', 'POST')).json(), finalized.json());
+});
+
+test('credential routes accept synthetic secrets once and scope references and mutations', async (t) => {
+  const { request } = await setup(t);
+  const secret = 'fixture-secret-never-in-responses';
+  const input = { capability: 'llm', providerId: 'amazon-bedrock', secret };
+  assert.equal((await request('/credentials', 'reader', 'POST', input)).statusCode, 403);
+  assert.equal(
+    (await request('/credentials', 'admin', 'POST', { ...input, tenantId: 'tenant-spoolharbour' }))
+      .statusCode,
+    400,
+  );
+  assert.equal(
+    (await request('/credentials', 'admin', 'POST', { ...input, providerId: 'unknown' }))
+      .statusCode,
+    404,
+  );
+  const created = await request('/credentials', 'admin', 'POST', input);
+  assert.equal(created.statusCode, 201);
+  const { ref } = created.json();
+  assert.deepEqual(created.json(), { ref });
+  assert.deepEqual((await request('/credentials')).json(), [{ ref }]);
+  assert.deepEqual((await request('/credentials', 'other')).json(), []);
+  const path = '/credentials/' + encodeURIComponent(ref);
+  const rotation = { secret: 'fixture-rotated-secret' };
+  assert.equal((await request(path + '/rotate', 'other', 'POST', rotation)).statusCode, 403);
+  assert.equal((await request(path + '/rotate', 'admin', 'POST', { secret: '' })).statusCode, 400);
+  assert.deepEqual((await request(path + '/rotate', 'admin', 'POST', rotation)).json(), { ref });
+  assert.equal((await request(path, 'reader', 'DELETE')).statusCode, 403);
+  assert.equal((await request(path, 'admin', 'DELETE')).statusCode, 204);
+  assert.deepEqual((await request('/credentials')).json(), []);
+  assert.equal((await request(path + '/rotate', 'admin', 'POST', rotation)).statusCode, 404);
+  assert.doesNotMatch(
+    (await request('/audit')).body,
+    /fixture-secret-never-in-responses|fixture-rotated-secret|ciphertext/,
+  );
 });

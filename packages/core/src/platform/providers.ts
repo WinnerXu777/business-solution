@@ -1,5 +1,6 @@
 import { PlatformAudit, PlatformError, type MutationContext } from './audit.ts';
-import { PlatformQueue, type TenantRepository } from './repository.ts';
+import type { TenantRepository } from './repository.ts';
+import { vaultRefPattern, type CredentialAccessor, type CredentialVault } from './vault.ts';
 
 const labels = {
   llm: 'LLM',
@@ -20,17 +21,17 @@ const labels = {
 
 export type Capability = keyof typeof labels;
 export const capabilities = Object.keys(labels) as Capability[];
-type Mode = 'native' | 'byo' | 'premium';
+export type ProviderMode = 'native' | 'byo' | 'premium';
 export type DataClass = 'synthetic' | 'business-records' | 'contact-data' | 'voice-recording';
 const canada = 'ca-central-1';
 const canadaRegions = new Set([canada, 'ca-west-1', 'canadacentral', 'canadaeast']);
 const allData: DataClass[] = ['synthetic', 'business-records', 'contact-data', 'voice-recording'];
 
-interface Provider {
+export interface Provider {
   providerId: string;
   capability: Capability;
   name: string;
-  mode: Mode;
+  mode: ProviderMode;
   regions: string[];
   features: string[];
   notes: string;
@@ -54,7 +55,7 @@ function option(
   capability: Capability,
   providerId: string,
   name: string,
-  mode: Exclude<Mode, 'native'>,
+  mode: Exclude<ProviderMode, 'native'>,
   region: string,
   features: string[],
   notes: string,
@@ -306,6 +307,9 @@ const fallbackCapabilities = new Set<Capability>([
   'speech-to-text',
   'text-to-speech',
   'ml-scoring',
+  'erp',
+  'crm',
+  'accounting',
 ]);
 
 export function fixtureDataClasses(_tenantId: string, capability: Capability): DataClass[] {
@@ -320,7 +324,7 @@ export const credentialReferencePattern =
 
 interface BindingView {
   providerId: string;
-  mode: Mode;
+  mode: ProviderMode;
   status: 'active' | 'pending' | 'error';
   region: string;
   dataClasses: DataClass[];
@@ -339,23 +343,40 @@ export interface BindingInput {
   fallbackProviderId?: string;
 }
 
+export interface BindingCall {
+  operation: 'read' | 'inference' | 'write' | 'delivery';
+  dataClasses: readonly DataClass[];
+  region?: string;
+  features?: readonly string[];
+}
+
+export interface ResolvedBinding {
+  version: number;
+  provider: Provider;
+  region: string;
+  credentialAccessor: CredentialAccessor | null;
+  fallbackPolicy: { trigger: 'retryable_failure'; provider: Provider; region: string } | null;
+}
+
 export class CapabilityBindingStore {
-  private readonly queue = new PlatformQueue();
   private readonly providers: ProviderRegistry;
   private readonly revisions: TenantRepository<BindingRevision[]>;
   private readonly audit: PlatformAudit;
   private readonly dataClasses: typeof fixtureDataClasses;
+  private readonly vault?: CredentialVault;
 
   constructor(
     providers: ProviderRegistry,
     revisions: TenantRepository<BindingRevision[]>,
     audit: PlatformAudit,
     dataClasses = fixtureDataClasses,
+    vault?: CredentialVault,
   ) {
     this.providers = providers;
     this.revisions = revisions;
     this.audit = audit;
     this.dataClasses = dataClasses;
+    this.vault = vault;
   }
 
   private region(provider: Provider, data: DataClass[]) {
@@ -400,9 +421,64 @@ export class CapabilityBindingStore {
     );
   }
 
+  async resolveBinding(
+    tenantId: string,
+    capability: Capability,
+    call?: BindingCall,
+  ): Promise<ResolvedBinding> {
+    if (!Object.hasOwn(labels, capability)) throw new PlatformError('not_found');
+    const required = this.dataClasses(tenantId, capability);
+    const data = [...required, ...(call?.dataClasses ?? [])];
+    const { binding, credentialRef } = (await this.history(tenantId, capability)).at(-1)!;
+    const provider = this.providers.get(capability, binding.providerId);
+    const eligible = (candidate: Provider) =>
+      candidate.regions.includes(binding.region) &&
+      (!call?.region || call.region === binding.region) &&
+      (data.every((item) => item === 'synthetic') || canadaRegions.has(binding.region)) &&
+      data.every(
+        (item) => binding.dataClasses.includes(item) && candidate.dataClasses.includes(item),
+      ) &&
+      (call?.features ?? []).every((item) => candidate.features.includes(item));
+
+    if (!provider || !eligible(provider)) throw new PlatformError('forbidden');
+    if (binding.status !== 'active') throw new PlatformError('unavailable');
+    let credentialAccessor: CredentialAccessor | null = null;
+    if (credentialRef || provider.mode !== 'native') {
+      if (!this.vault || !credentialRef || !vaultRefPattern.test(credentialRef)) {
+        throw new PlatformError('unavailable');
+      }
+      await this.vault.assertActive(tenantId, capability, provider.providerId, credentialRef);
+      credentialAccessor = this.vault.accessor(
+        tenantId,
+        capability,
+        provider.providerId,
+        credentialRef,
+      );
+    }
+    const fallback =
+      binding.fallbackProviderId && this.providers.get(capability, binding.fallbackProviderId);
+    const allowFallback =
+      (call?.operation === 'read' || call?.operation === 'inference') &&
+      fallbackCapabilities.has(capability) &&
+      fallback &&
+      fallback.mode === 'native' &&
+      fallback.providerId !== provider.providerId &&
+      eligible(fallback);
+
+    return {
+      version: binding.version,
+      provider,
+      region: binding.region,
+      credentialAccessor,
+      fallbackPolicy: allowFallback
+        ? { trigger: 'retryable_failure', provider: fallback, region: binding.region }
+        : null,
+    };
+  }
+
   bind(context: MutationContext, name: string, input: BindingInput) {
     const snapshot = structuredClone(input);
-    return this.queue.run(() => this.update(context, name, snapshot));
+    return this.audit.transaction(context.tenantId, () => this.update(context, name, snapshot));
   }
 
   private async update(context: MutationContext, name: string, input: BindingInput) {
@@ -416,10 +492,18 @@ export class CapabilityBindingStore {
     if (credentialRef !== undefined && !credentialReferencePattern.test(credentialRef)) {
       throw new PlatformError('forbidden', 'A named credential reference is required.');
     }
+    if (credentialRef?.startsWith('vault://')) {
+      if (!this.vault || !vaultRefPattern.test(credentialRef)) throw new PlatformError('not_found');
+      await this.vault.assertActive(context.tenantId, capability, providerId, credentialRef);
+    }
     if (fallbackProviderId !== undefined) {
       const fallback = this.providers.get(capability, fallbackProviderId);
       if (!fallback) throw new PlatformError('not_found');
-      if (!fallbackCapabilities.has(capability) || fallbackProviderId === providerId) {
+      if (
+        !fallbackCapabilities.has(capability) ||
+        fallbackProviderId === providerId ||
+        fallback.mode !== 'native'
+      ) {
         throw new PlatformError('forbidden', 'Fallback is unavailable for this binding.');
       }
       this.region(fallback, dataClasses);
