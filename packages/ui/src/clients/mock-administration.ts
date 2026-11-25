@@ -17,6 +17,8 @@ import { requireFixture, requireRole } from './mock-records.ts';
 export function createMockAdministration(
   me: PlatformIdentity,
   now: string,
+  accountingConnected: () => void,
+  recordsImported: () => void,
 ): {
   billing: BillingClient;
   credentials: CredentialsClient;
@@ -208,10 +210,11 @@ export function createMockAdministration(
       },
       async startOAuth(id) {
         admin();
-        if (connector(id).auth !== 'oauth' || !statuses.has(id))
-          throw new PlatformError('invalid_input');
+        const item = connector(id);
+        if (item.auth !== 'oauth' || !statuses.has(id)) throw new PlatformError('invalid_input');
         // Fixture return simulates the callback with a local hash navigation.
         statuses.set(id, { state: 'connected', lastSyncAt: statuses.get(id)!.lastSyncAt });
+        if (id === 'accounting-fixture') accountingConnected();
         return { authorizeUrl: '#/connectors/connector/' + encodeURIComponent(id) };
       },
       async status(id) {
@@ -224,6 +227,7 @@ export function createMockAdministration(
         const status = statuses.get(id);
         if (status?.state !== 'connected') throw new PlatformError('invalid_input');
         status.lastSyncAt = now;
+        if (id === 'inventory-fixture') recordsImported();
         reports.set(id, {
           syncId: 'sync-' + ++syncSequence,
           imported: demo ? 3 : 0,

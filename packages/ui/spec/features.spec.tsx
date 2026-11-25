@@ -56,15 +56,17 @@ test('groups each entry in the requested sidebar and hides detail routes from th
     within(nav.getByRole('group', { name: label }))
       .getAllByRole('link')
       .map((item) => item.textContent?.slice(1));
-  expect(links('Operate')).toEqual(['Overview', 'Approvals', 'Bots', 'Workflows']);
+  expect(links('Operate')).toEqual(['Overview', 'Approvals', 'Bots', 'Conversations', 'Workflows']);
   expect(links('Records')).toEqual(['ERP', 'CRM']);
-  expect(links('Intelligence')).toEqual(['Insights']);
+  expect(links('Intelligence')).toEqual(['Insights', 'LLM playground']);
   expect(links('Platform')).toEqual([
     'Connectors',
     'Providers',
     'Credentials',
     'Modules and billing',
     'Connections',
+    'Members',
+    'Roles',
     'Audit log',
     'Usage',
     'Settings',

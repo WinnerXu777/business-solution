@@ -12,7 +12,13 @@ import { mockApproval, requireFixture, requireRole } from './mock-records.ts';
 import { resolveWorkflow, validateWorkflow, winBackWorkflow } from './workflow-definition.ts';
 import type { WorkflowDefinition, WorkflowStep, WorkflowTarget } from './workflow-definition.ts';
 
-type BotEntry = { view: BotRun; events: BotEvent[]; requester: string; fingerprint: string };
+type BotEntry = {
+  view: BotRun;
+  events: BotEvent[];
+  requester: string;
+  fingerprint: string;
+  update: () => void;
+};
 type WorkflowEntry = {
   view: WorkflowHistory;
   requester: string;
@@ -36,6 +42,8 @@ export function createMockAutomation(
   now: string,
   state: MockAutomationState,
   enabled: (module: 'ai' | 'workflows') => boolean,
+  updateBot: (input: BotStart, view: BotRun) => void,
+  published: () => void,
 ): AutomationClient {
   const tenant = me.tenant.id;
   const prefix = tenant + ':';
@@ -91,7 +99,10 @@ export function createMockAutomation(
         handoff: false,
       },
     };
+    event(entry, 'reply_delta', { delta: 'Rivetquay fixture ' });
+    event(entry, 'reply_delta', { delta: 'run completed.' });
     event(entry, 'settled', { status: 'completed' });
+    entry.update();
   }
   function transition(entry: WorkflowEntry, kind: string) {
     const { history, nodeId, status } = entry.view;
@@ -207,6 +218,7 @@ export function createMockAutomation(
       const id = 'bot-run-' + ++state.botSequence;
       const entry: BotEntry = {
         requester: owner,
+        update: () => updateBot(input, entry.view),
         fingerprint,
         events: [],
         view: {
@@ -248,7 +260,10 @@ export function createMockAutomation(
       if (!entry.view.pending) {
         event(entry, 'step_settled', { stepId: 'tool-1', state: 'ok' });
         finishBot(entry);
-      } else entry.view.status = 'pending_approval';
+      } else {
+        entry.view.status = 'pending_approval';
+        entry.update();
+      }
       return { ...structuredClone(entry.view), status: 'queued', pending: null, result: null };
     },
     async getBotRun(id) {
@@ -290,6 +305,7 @@ export function createMockAutomation(
         entry.view.status = 'cancelled';
         entry.view.pending = null;
         event(entry, 'cancelled');
+        entry.update();
       }
       return structuredClone(entry.view);
     },
@@ -310,6 +326,7 @@ export function createMockAutomation(
       if (state.definitions.has(key) || (item.id === winBackWorkflow.id && item.version === 1))
         throw new PlatformError('idempotency_conflict');
       state.definitions.set(key, structuredClone(item));
+      published();
       return structuredClone(item);
     },
     async preview(target) {

@@ -1,6 +1,9 @@
 import { createMockAutomation, MockAutomationState } from './clients/mock-automation.ts';
 import { createMockRecords, MockRecordsState } from './clients/mock-records.ts';
 import { createMockAdministration } from './clients/mock-administration.ts';
+import { createMockAccess, MockAuthClient } from './clients/mock-access.ts';
+import type { SetupStep } from './clients/access.ts';
+import { createMockConversations, createMockLlm } from './clients/mock-live.ts';
 import { loadDemoFixtures } from '@bs/contracts';
 import type { AuditEntry, ModuleId, UsageCounterEvent } from '@bs/contracts';
 import {
@@ -140,9 +143,16 @@ export interface MockPlatformClientOptions {
   now?: string;
   automationState?: MockAutomationState;
   recordsState?: MockRecordsState;
+  platformOperator?: boolean;
+  requireFreshMfa?: boolean;
+  auth?: MockAuthClient;
 }
 
 export class MockPlatformClient implements PlatformClient {
+  readonly auth: MockAuthClient;
+  readonly access: PlatformClient['access'];
+  readonly conversations: PlatformClient['conversations'];
+  readonly llm: PlatformClient['llm'];
   readonly automation: PlatformClient['automation'];
   readonly records: PlatformClient['records'];
   readonly insights: PlatformClient['insights'];
@@ -150,6 +160,7 @@ export class MockPlatformClient implements PlatformClient {
   readonly credentials: PlatformClient['credentials'];
   readonly connectors: PlatformClient['connectors'];
   private readonly identity: PlatformIdentity;
+  private readonly setup = new Set<SetupStep>();
   private readonly now: string;
   private readonly modules: PlatformModule[];
   private readonly capabilities: Capability[];
@@ -167,6 +178,9 @@ export class MockPlatformClient implements PlatformClient {
     now,
     automationState = new MockAutomationState(),
     recordsState = new MockRecordsState(),
+    platformOperator = false,
+    requireFreshMfa = false,
+    auth = new MockAuthClient(true),
   }: MockPlatformClientOptions = {}) {
     const fixtures = loadDemoFixtures();
     const workspace = fixtures.workspaces.find((item) => item.id === tenantId);
@@ -185,17 +199,38 @@ export class MockPlatformClient implements PlatformClient {
       tenant,
       actor: { ...(grant?.actor ?? { id: 'actor-' + role, kind: 'person' }), displayName },
       role,
+      platformOperator,
       workspaces: [tenant],
     };
     this.now = now ?? fixtures.asOf;
+    this.auth = auth;
+    if (tenantId === 'tenant-rivetquay') {
+      this.setup.add('import_records');
+      this.setup.add('choose_providers');
+    }
+    const requiresStepUp = () => requireFreshMfa && !auth.fresh;
+    this.access = createMockAccess(this.identity, this.now, requiresStepUp, this.setup);
+    const conversations = createMockConversations(this.identity, (id) =>
+      this.automation.cancelBot(id),
+    );
+    this.conversations = conversations;
     const enabled = (module: ModuleId) =>
       this.modules.some((item) => item.moduleId === module && item.enabled);
+    this.llm = createMockLlm(
+      this.identity,
+      this.now,
+      () => enabled('ai'),
+      requiresStepUp,
+      () => this.capabilities.find(({ capability }) => capability === 'llm')?.binding,
+    );
     this.automation = createMockAutomation(
       this.identity,
       fixtures,
       this.now,
       automationState,
       enabled,
+      conversations.updateBot,
+      () => this.setup.add('publish_workflow'),
     );
     const { records, insights } = createMockRecords(
       this.identity,
@@ -206,7 +241,12 @@ export class MockPlatformClient implements PlatformClient {
     );
     this.records = records;
     this.insights = insights;
-    const { billing, credentials, connectors } = createMockAdministration(this.identity, this.now);
+    const { billing, credentials, connectors } = createMockAdministration(
+      this.identity,
+      this.now,
+      () => this.setup.add('connect_accounting'),
+      () => this.setup.add('import_records'),
+    );
     this.billing = billing;
     this.credentials = credentials;
     this.connectors = connectors;
@@ -351,6 +391,7 @@ export class MockPlatformClient implements PlatformClient {
   }
 
   async getMe() {
+    if (!this.auth.signedIn) throw new PlatformError('unauthenticated');
     return structuredClone(this.identity);
   }
   async getWorkspaces() {
@@ -406,6 +447,7 @@ export class MockPlatformClient implements PlatformClient {
       fallbackProviderId: fallback || null,
       version: item.binding.version + 1,
     };
+    this.setup.add('choose_providers');
     this.recordAudit('platform.capabilities.bind', 'ok');
   }
 

@@ -1,8 +1,8 @@
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { ComponentType } from 'react';
 import { createPortal } from 'react-dom';
-import { Badge, Card, EmptyState, Field, Select, Switch, Toast } from './components.tsx';
-import { RemoteContent, useAction, useResource } from './data.tsx';
+import { Badge, Button, Card, EmptyState, Field, Select, Switch, Toast } from './components.tsx';
+import { ActionAuthContext, RemoteContent, useAction, useResource } from './data.tsx';
 import type { Notice } from './data.tsx';
 import { PlatformError } from './platform-client.ts';
 import type { PlatformClient, PlatformIdentity, Workspace } from './platform-client.ts';
@@ -18,6 +18,11 @@ import {
 } from './screens/workflows.tsx';
 import { ErpScreen, CrmScreen } from './screens/records.tsx';
 import { InsightsScreen } from './screens/insights.tsx';
+import { MembersScreen, RolesScreen } from './screens/access.tsx';
+import { TenantsScreen } from './screens/tenants.tsx';
+import { ConversationsScreen } from './screens/conversations.tsx';
+import { LlmPlayground } from './screens/llm.tsx';
+import { StepUpDialog } from './session.tsx';
 import {
   ConnectorsScreen,
   CredentialsScreen,
@@ -39,11 +44,21 @@ export interface PlatformRoute {
   title: string;
   component: ComponentType<PlatformRouteContext>;
   navLabel?: string;
+  visible?: (me: PlatformIdentity) => boolean;
+}
+interface SessionControls {
+  busy: boolean;
+  refresh: () => void;
+  logout: () => void;
+  expired: () => void;
+  navigate: (url: string) => void;
+  revision: number;
 }
 export interface PlatformAppProps {
   client: PlatformClient;
   extraRoutes?: readonly PlatformRoute[];
   resolveWorkspaceClient?: (workspace: Workspace) => Promise<PlatformClient>;
+  sessionControls?: SessionControls;
 }
 
 const themeKey = 'bs-platform-theme';
@@ -70,6 +85,16 @@ function subscribePath(callback: () => void) {
   return () => window.removeEventListener('hashchange', callback);
 }
 
+const compactNavigation = '(max-width: 850px)';
+function narrowViewport() {
+  return window.matchMedia?.(compactNavigation).matches ?? false;
+}
+function subscribeViewport(callback: () => void) {
+  const query = window.matchMedia?.(compactNavigation);
+  query?.addEventListener('change', callback);
+  return () => query?.removeEventListener('change', callback);
+}
+
 function SettingsRoute() {
   return null;
 }
@@ -78,15 +103,25 @@ const baseRoutes: readonly PlatformRoute[] = [
   { path: '/', title: 'Overview', component: OverviewScreen },
   { path: '/approvals', title: 'Approvals', component: ApprovalsScreen },
   { path: '/bots', title: 'Bots', component: BotsScreen },
+  { path: '/conversations', title: 'Conversations', component: ConversationsScreen },
   { path: '/workflows', title: 'Workflows', component: WorkflowsScreen },
   { path: '/erp', title: 'ERP', component: ErpScreen },
   { path: '/crm', title: 'CRM', component: CrmScreen },
   { path: '/insights', title: 'Insights', component: InsightsScreen },
+  { path: '/llm', title: 'LLM playground', component: LlmPlayground },
   { path: '/connectors', title: 'Connectors', component: ConnectorsScreen },
   { path: '/providers', title: 'Providers', component: ProvidersScreen },
   { path: '/credentials', title: 'Credentials', component: CredentialsScreen },
   { path: '/modules', title: 'Modules and billing', component: ModulesAndBillingScreen },
   { path: '/connections', title: 'Connections', component: ConnectionsScreen },
+  { path: '/members', title: 'Members', component: MembersScreen },
+  { path: '/roles', title: 'Roles', component: RolesScreen, visible: (me) => me.role === 'admin' },
+  {
+    path: '/tenants',
+    title: 'Tenants',
+    component: TenantsScreen,
+    visible: (me) => Boolean(me.platformOperator),
+  },
   { path: '/audit', title: 'Audit log', component: AuditScreen },
   { path: '/usage', title: 'Usage', component: UsageScreen },
   { path: '/settings', title: 'Settings', component: SettingsRoute },
@@ -116,9 +151,9 @@ const detailRoutes: readonly PlatformRoute[] = [
 ];
 
 const navigation = [
-  { label: 'Operate', paths: ['/', '/approvals', '/bots', '/workflows'] },
+  { label: 'Operate', paths: ['/', '/approvals', '/bots', '/conversations', '/workflows'] },
   { label: 'Records', paths: ['/erp', '/crm'] },
-  { label: 'Intelligence', paths: ['/insights'] },
+  { label: 'Intelligence', paths: ['/insights', '/llm'] },
   {
     label: 'Platform',
     paths: [
@@ -127,13 +162,37 @@ const navigation = [
       '/credentials',
       '/modules',
       '/connections',
+      '/members',
+      '/roles',
+      '/tenants',
       '/audit',
       '/usage',
       '/settings',
     ],
   },
 ];
-const navIcons = ['◫', '✓', '◉', '◇', '▤', '◎', '◈', '⎇', '⇆', '⌘', '▦', '⊞', '≡', '▥', '⚙'];
+const navIcons: Record<string, string> = {
+  '/': '◫',
+  '/approvals': '✓',
+  '/bots': '◉',
+  '/conversations': '☏',
+  '/workflows': '◇',
+  '/erp': '▤',
+  '/crm': '◎',
+  '/insights': '◈',
+  '/llm': '✦',
+  '/connectors': '⎇',
+  '/providers': '⇆',
+  '/credentials': '⌘',
+  '/modules': '▦',
+  '/connections': '⊞',
+  '/members': '♙',
+  '/roles': '☷',
+  '/tenants': '▧',
+  '/audit': '≡',
+  '/usage': '▥',
+  '/settings': '⚙',
+};
 const navPaths = new Set(navigation.flatMap(({ paths }) => paths));
 
 function SettingsScreen({
@@ -178,12 +237,14 @@ function TopBar({
   activeWorkspace,
   onSwitch,
   notify,
+  sessionControls,
 }: {
   me: PlatformIdentity;
   client: PlatformClient;
   activeWorkspace?: Workspace;
   onSwitch?: (workspace: Workspace) => Promise<void>;
   notify: Notice;
+  sessionControls?: SessionControls;
 }) {
   const options = useResource(useCallback(() => client.getWorkspaces(), [client]));
   const { busy, run } = useAction(notify);
@@ -270,6 +331,24 @@ function TopBar({
             >
               Profile settings
             </a>
+            {sessionControls && (
+              <>
+                <Button
+                  variant="quiet"
+                  disabled={sessionControls.busy}
+                  onClick={sessionControls.refresh}
+                >
+                  Refresh session
+                </Button>
+                <Button
+                  variant="quiet"
+                  disabled={sessionControls.busy}
+                  onClick={sessionControls.logout}
+                >
+                  Sign out
+                </Button>
+              </>
+            )}
           </div>
         </details>
       </div>
@@ -277,7 +356,12 @@ function TopBar({
   );
 }
 
-function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: PlatformAppProps) {
+function PlatformShell({
+  client,
+  extraRoutes = [],
+  resolveWorkspaceClient,
+  sessionControls,
+}: PlatformAppProps) {
   const [selection, setSelection] = useState<{
     client: PlatformClient;
     workspace: Workspace;
@@ -291,6 +375,9 @@ function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: Pla
     ),
   );
   const path = useSyncExternalStore(subscribePath, readPath, () => '/');
+  const navigationId = useId();
+  const compact = useSyncExternalStore(subscribeViewport, narrowViewport, () => false);
+  const [navigationOpen, setNavigationOpen] = useState(false);
   const [theme, setTheme] = useState(preferredTheme);
   const [notices, setNotices] = useState<
     { id: number; message: string; tone: 'success' | 'danger' }[]
@@ -300,18 +387,47 @@ function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: Pla
   const previousPath = useRef(path);
   const body = useRef<HTMLDivElement>(null);
   const [toastTarget, setToastTarget] = useState<HTMLDialogElement | null>(null);
+  const [stepUp, setStepUp] = useState(false);
 
   const notify: Notice = useCallback((message, tone = 'success') => {
     const id = ++sequence.current;
     setNotices((items) => [...items.slice(-3), { id, message, tone }]);
   }, []);
+  function handleAuth(error: PlatformError) {
+    if (error.code === 'step_up_required') {
+      setStepUp(true);
+      return true;
+    }
+    if (error.code === 'unauthenticated' && sessionControls) {
+      sessionControls.expired();
+      return true;
+    }
+    return false;
+  }
+  const expired = sessionControls?.expired;
+  const revision = sessionControls?.revision;
+  const lastRevision = useRef(revision);
+  const reloadIdentity = identity.reload;
+  useEffect(() => {
+    if (lastRevision.current !== revision) {
+      lastRevision.current = revision;
+      reloadIdentity();
+    }
+  }, [revision, reloadIdentity]);
+  useEffect(() => {
+    if (identity.state.status === 'error' && identity.state.code === 'unauthenticated') expired?.();
+  }, [identity.state, expired]);
   const routes = new Map([...baseRoutes, ...detailRoutes].map((route) => [route.path, route]));
   for (const route of extraRoutes) {
     const routePath = normalizePath(route.path);
     routes.set(routePath, { ...route, path: routePath });
   }
   const route = routes.get(path) ?? routes.get(path.replace(/\/[^/]+$/, '/:id'));
-  const nav = [...routes.values()].filter((item) => navPaths.has(item.path) || item.navLabel);
+  const me = identity.state.status === 'ready' ? identity.state.data : undefined;
+  const nav = [...routes.values()].filter(
+    (item) =>
+      (navPaths.has(item.path) || item.navLabel) && (!item.visible || (me && item.visible(me))),
+  );
   const parentPath = path === '/billing' || path.startsWith('/billing/') ? '/modules' : path;
   const activeNav =
     nav.find((item) => item.path === parentPath) ??
@@ -334,6 +450,7 @@ function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: Pla
   useEffect(() => {
     if (previousPath.current !== path) {
       previousPath.current = path;
+      setNavigationOpen(false);
       title.current?.focus();
     }
   }, [path]);
@@ -381,86 +498,122 @@ function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: Pla
     </div>
   );
   return (
-    <div className="bs-platform" data-theme={theme} ref={body}>
-      <aside className="bs-sidebar">
-        <a className="bs-brand" href="#/" aria-label="Rivetquay overview">
-          <span className="bs-brand-mark" aria-hidden="true">
-            R
-          </span>
-          <span>
-            <strong>Rivetquay</strong>
-            <small>Platform console</small>
-          </span>
-        </a>
-        <nav aria-label="Platform navigation">
-          {navGroups.map(({ label, items }) => (
-            <div key={label} className="bs-nav-group" role="group" aria-label={label}>
-              <p className="bs-nav-group-title" aria-hidden="true">
-                {label}
-              </p>
-              {items.map((item) => (
-                <a
-                  key={item.path}
-                  href={'#' + item.path}
-                  aria-current={activeNav?.path === item.path ? 'page' : undefined}
-                >
-                  <span aria-hidden="true" className="bs-nav-icon">
-                    {navIcons[nav.indexOf(item)] ?? '·'}
-                  </span>
-                  {item.navLabel ?? item.title}
-                </a>
-              ))}
-            </div>
-          ))}
-        </nav>
-      </aside>
-      <div className="bs-main">
-        <RemoteContent resource={identity} label="your workspace">
-          {(me) => {
-            const workspace =
-              selection?.workspace ??
-              me.workspaces.find((item) => item.id === me.tenant.id) ??
-              me.workspaces[0] ??
-              me.tenant;
-            const Component = route?.component;
-            return (
-              <>
-                <TopBar
-                  me={me}
-                  client={sessionClient}
-                  notify={notify}
-                  activeWorkspace={workspace}
-                  onSwitch={resolveWorkspaceClient ? switchWorkspace : undefined}
-                />
-                <main className="bs-content">
-                  <h1 ref={title} tabIndex={-1}>
-                    {route?.title ?? 'Page not found'}
-                  </h1>
-                  <div key={workspace.id + ':' + path}>
-                    {path === '/settings' && Component === SettingsRoute ? (
-                      <SettingsScreen me={me} theme={theme} setTheme={setTheme} />
-                    ) : Component ? (
-                      <Component
-                        client={sessionClient}
-                        me={me}
-                        workspace={workspace}
-                        path={path}
-                        notify={notify}
-                      />
-                    ) : (
-                      <EmptyState title="This route is unavailable.">
-                        <a href="#/">Return to overview</a>
-                      </EmptyState>
-                    )}
-                  </div>
-                </main>
-              </>
-            );
-          }}
-        </RemoteContent>
+    <ActionAuthContext.Provider value={handleAuth}>
+      <div className="bs-platform" data-theme={theme} ref={body}>
+        <aside className="bs-sidebar">
+          <a className="bs-brand" href="#/" aria-label="Rivetquay overview">
+            <span className="bs-brand-mark" aria-hidden="true">
+              R
+            </span>
+            <span>
+              <strong>Rivetquay</strong>
+              <small>Platform console</small>
+            </span>
+          </a>
+          <Button
+            className="bs-nav-toggle"
+            variant="secondary"
+            aria-expanded={navigationOpen}
+            aria-controls={navigationId}
+            onClick={() => setNavigationOpen((value) => !value)}
+          >
+            Menu
+          </Button>
+          <nav
+            id={navigationId}
+            aria-label="Platform navigation"
+            hidden={compact && !navigationOpen}
+            onKeyDown={(event) => {
+              if (event.key === 'Escape' && compact && navigationOpen) {
+                setNavigationOpen(false);
+                event.currentTarget.parentElement
+                  ?.querySelector<HTMLButtonElement>('.bs-nav-toggle')
+                  ?.focus();
+              }
+            }}
+          >
+            {navGroups.map(({ label, items }) => (
+              <div key={label} className="bs-nav-group" role="group" aria-label={label}>
+                <p className="bs-nav-group-title" aria-hidden="true">
+                  {label}
+                </p>
+                {items.map((item) => (
+                  <a
+                    key={item.path}
+                    href={'#' + item.path}
+                    aria-current={activeNav?.path === item.path ? 'page' : undefined}
+                    onClick={() => {
+                      setNavigationOpen(false);
+                      if (item.path === path) title.current?.focus();
+                    }}
+                  >
+                    <span aria-hidden="true" className="bs-nav-icon">
+                      {navIcons[item.path] ?? '·'}
+                    </span>
+                    {item.navLabel ?? item.title}
+                  </a>
+                ))}
+              </div>
+            ))}
+          </nav>
+        </aside>
+        <div className="bs-main">
+          <RemoteContent resource={identity} label="your workspace">
+            {(me) => {
+              const workspace =
+                selection?.workspace ??
+                me.workspaces.find((item) => item.id === me.tenant.id) ??
+                me.workspaces[0] ??
+                me.tenant;
+              const Component = route?.component;
+              return (
+                <>
+                  <TopBar
+                    me={me}
+                    client={sessionClient}
+                    notify={notify}
+                    activeWorkspace={workspace}
+                    onSwitch={resolveWorkspaceClient ? switchWorkspace : undefined}
+                    sessionControls={sessionControls}
+                  />
+                  <main className="bs-content">
+                    <h1 ref={title} tabIndex={-1}>
+                      {route?.title ?? 'Page not found'}
+                    </h1>
+                    <div key={workspace.id + ':' + path}>
+                      {path === '/settings' && Component === SettingsRoute ? (
+                        <SettingsScreen me={me} theme={theme} setTheme={setTheme} />
+                      ) : Component ? (
+                        <Component
+                          client={sessionClient}
+                          me={me}
+                          workspace={workspace}
+                          path={path}
+                          notify={notify}
+                        />
+                      ) : (
+                        <EmptyState title="This route is unavailable.">
+                          <a href="#/">Return to overview</a>
+                        </EmptyState>
+                      )}
+                    </div>
+                  </main>
+                </>
+              );
+            }}
+          </RemoteContent>
+        </div>
+        {stepUp && (
+          <StepUpDialog
+            auth={sessionClient.auth}
+            notify={notify}
+            navigate={sessionControls?.navigate}
+            close={() => setStepUp(false)}
+          />
+        )}
+        {toastTarget ? createPortal(notifications, toastTarget) : notifications}
       </div>
-      {toastTarget ? createPortal(notifications, toastTarget) : notifications}
-    </div>
+    </ActionAuthContext.Provider>
   );
 }
 

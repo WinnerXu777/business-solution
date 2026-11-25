@@ -15,6 +15,7 @@ import { canCreateConnection } from '../platform-client.ts';
 import type { Connection, NewConnection } from '../platform-client.ts';
 import { formatTime } from './reporting.tsx';
 import type { ScreenProps } from './screen-helpers.tsx';
+import { LlmKeys } from './llm.tsx';
 
 const kinds = { api_client: 'API client', mcp_client: 'MCP client' };
 
@@ -163,81 +164,84 @@ export function ConnectionsScreen(props: ScreenProps) {
   const [revoking, setRevoking] = useState<Connection>();
   const resource = useResource(useCallback(() => client.getConnections(), [client]));
   return (
-    <Card
-      title="API and MCP clients"
-      action={
-        canCreateConnection(me.role) && (
-          <Button onClick={() => setCreating(true)}>New connection</Button>
-        )
-      }
-    >
-      <RemoteContent resource={resource} label="connections">
-        {(rows) => (
-          <Table
-            label="Connections"
-            rows={rows}
-            rowKey={(row) => row.id}
-            empty="No clients are connected to this workspace."
-            columns={[
-              {
-                key: 'name',
-                title: 'Name',
-                render: (row) => (
-                  <>
-                    <strong>{row.name}</strong>
-                    <small className="bs-subline">{row.id}</small>
-                  </>
-                ),
-                sortValue: (row) => row.name,
-              },
-              { key: 'kind', title: 'Type', render: (row) => <Badge>{kinds[row.kind]}</Badge> },
-              { key: 'scopes', title: 'Scopes', render: (row) => row.scopes.join(', ') },
-              {
-                key: 'created',
-                title: 'Created (Toronto)',
-                render: (row) => formatTime(row.createdAt),
-              },
-              {
-                key: 'last',
-                title: 'Last used (Toronto)',
-                render: (row) => (row.lastUsedAt ? formatTime(row.lastUsedAt) : 'Never'),
-              },
-              ...(me.role === 'admin'
-                ? [
-                    {
-                      key: 'revoke',
-                      title: 'Manage',
-                      render: (row: Connection) => (
-                        <Button
-                          variant="secondary"
-                          aria-label={'Revoke ' + row.name}
-                          onClick={() => setRevoking(row)}
-                        >
-                          Revoke
-                        </Button>
-                      ),
-                    },
-                  ]
-                : []),
-            ]}
+    <div className="bs-stack">
+      <Card
+        title="API and MCP clients"
+        action={
+          canCreateConnection(me.role) && (
+            <Button onClick={() => setCreating(true)}>New connection</Button>
+          )
+        }
+      >
+        <RemoteContent resource={resource} label="connections">
+          {(rows) => (
+            <Table
+              label="Connections"
+              rows={rows}
+              rowKey={(row) => row.id}
+              empty="No clients are connected to this workspace."
+              columns={[
+                {
+                  key: 'name',
+                  title: 'Name',
+                  render: (row) => (
+                    <>
+                      <strong>{row.name}</strong>
+                      <small className="bs-subline">{row.id}</small>
+                    </>
+                  ),
+                  sortValue: (row) => row.name,
+                },
+                { key: 'kind', title: 'Type', render: (row) => <Badge>{kinds[row.kind]}</Badge> },
+                { key: 'scopes', title: 'Scopes', render: (row) => row.scopes.join(', ') },
+                {
+                  key: 'created',
+                  title: 'Created (Toronto)',
+                  render: (row) => formatTime(row.createdAt),
+                },
+                {
+                  key: 'last',
+                  title: 'Last used (Toronto)',
+                  render: (row) => (row.lastUsedAt ? formatTime(row.lastUsedAt) : 'Never'),
+                },
+                ...(me.role === 'admin'
+                  ? [
+                      {
+                        key: 'revoke',
+                        title: 'Manage',
+                        render: (row: Connection) => (
+                          <Button
+                            variant="secondary"
+                            aria-label={'Revoke ' + row.name}
+                            onClick={() => setRevoking(row)}
+                          >
+                            Revoke
+                          </Button>
+                        ),
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+          )}
+        </RemoteContent>
+        {creating && (
+          <NewConnectionDialog
+            {...props}
+            onClose={() => setCreating(false)}
+            reload={resource.reload}
           />
         )}
-      </RemoteContent>
-      {creating && (
-        <NewConnectionDialog
-          {...props}
-          onClose={() => setCreating(false)}
-          reload={resource.reload}
-        />
-      )}
-      {revoking && (
-        <RevokeDialog
-          {...props}
-          row={revoking}
-          onClose={() => setRevoking(undefined)}
-          reload={resource.reload}
-        />
-      )}
-    </Card>
+        {revoking && (
+          <RevokeDialog
+            {...props}
+            row={revoking}
+            onClose={() => setRevoking(undefined)}
+            reload={resource.reload}
+          />
+        )}
+      </Card>
+      <LlmKeys {...props} />
+    </div>
   );
 }

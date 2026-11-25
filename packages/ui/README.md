@@ -82,3 +82,53 @@ when serializing platform approvals.
 Mount the connector catalogue, install, OAuth start, status, sync and reconciliation handlers at
 `/connectors` with the payloads in `src/clients/administration.ts`. The browser follows the
 returned `authorizeUrl`. The mock returns a local hash and keeps the flow offline.
+
+## Session mode and new platform adapters
+
+A host with cookie-based sessions can mount the sign-in and callback flow from the same package.
+
+```tsx
+import { AuthenticatedPlatformApp, HttpPlatformClient } from '@bs/ui';
+
+const client = new HttpPlatformClient({});
+<AuthenticatedPlatformApp client={client} />;
+```
+
+The host serves the UI at the callback destination. The API validates OIDC state, exchanges the
+code, manages HttpOnly session cookies and checks CSRF on session-authenticated mutations. The UI
+removes callback parameters before exchange, handles session expiry, and refreshes identity after
+a successful refresh. On `step_up_required`, it requests a fresh sign-in and lets the user
+explicitly resubmit the operation. The existing bearer-token mount remains available.
+
+The access, conversation and key routes below define the local HTTP adapter seam pending lane
+integration. Arrays are returned directly. Mutations that return no object can respond with 204.
+Read and authorize every request under its verified session. Use `{ code }` for platform denials.
+
+| Method and path under `/platform/v1`                                          | Payload and result                                                                                                                                                     |
+| ----------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /auth/login`                                                             | `returnTo`, optional `stepUp=true`. Returns `{ authorizeUrl }`.                                                                                                        |
+| `GET /auth/callback`, `POST /auth/refresh`, `POST /auth/logout`               | Callback takes `code` and `state`. Callback and refresh return `{ expiresAt? }`. Logout returns an empty response.                                                     |
+| `GET /me`                                                                     | Existing identity with optional verified `platformOperator` flag                                                                                                       |
+| `GET /members`, `POST /members/invitations`                                   | Members contain `id`, `name`, `email`, `roleId`. Invite takes `{ email, roleId }` and returns `{ url, expiresAt }` once.                                               |
+| `PATCH /members/:id`, `DELETE /members/:id`                                   | Set `{ roleId }` or remove a member                                                                                                                                    |
+| `GET /permissions`, `GET /roles`                                              | Permission `{ id, label }`. Role `{ id, name, builtIn, permissions }`.                                                                                                 |
+| `POST /roles`, `PATCH /roles/:id`, `DELETE /roles/:id`                        | Save `{ name, permissions }` or delete a custom role                                                                                                                   |
+| `GET /tenants/options`, `GET /tenants`, `POST /tenants`, `PATCH /tenants/:id` | Use `TenantOptions`, `Tenant`, `TenantProvision` in `src/clients/access.ts`. Provision uses `Idempotency-Key`. Patch takes `{ status }`.                               |
+| `GET /onboarding`                                                             | Return `{ completed: SetupStep[] }` from workspace state                                                                                                               |
+| `GET /conversations`, `GET /conversations/:id`                                | Return inbox summaries and details with transcript and optional active run ID, using `src/clients/conversations.ts`                                                    |
+| `POST /conversations/:id/handoff`                                             | `{ direction: 'takeover' or 'handback' }`. Returns updated summary. Takeover stops subsequent bot dispatch.                                                            |
+| `POST /conversations/:id/messages`                                            | `{ text }` with `Idempotency-Key`. Returns the persisted staff transcript line.                                                                                        |
+| `POST /conversations/:id/voice`                                               | Multipart `audio` with `Idempotency-Key`. Streams `VoiceEvent` data frames and closes after `settled`. The browser sends one bounded recording when push-to-talk ends. |
+| `GET /llm/keys`, `POST /llm/keys`, `DELETE /llm/keys/:id`                     | List metadata `{ id, name, prefix, createdAt }`, create with `{ name }` and return `{ secret }` once, or revoke by ID                                                  |
+
+Conversation bot messages start a run through the documented `/automation/bots/runs` endpoint
+with the conversation ID as `sessionId`. The runtime should persist the requester message and
+bot result into that conversation. A `reply_delta` event carries the same `id` and `runId` as other
+bot events and includes string `delta`. The UI can still show the final reply from the documented
+run view if the runtime sends only lifecycle events. Requesters can share the review IDs with the
+designated approver, who can use the assigned-run form in Bots.
+
+The LLM adapter uses `/llm/v1/models`, `/llm/v1/chat/completions` and `/llm/v1/embeddings`.
+The playground requests streaming usage and displays the route and binding from
+`X-Provider-Route` and `X-Binding-Version` response headers or `provider_route` and
+`binding_version` chunk fields. Tool mode only displays proposed calls.

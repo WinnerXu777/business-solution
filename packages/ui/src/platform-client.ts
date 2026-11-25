@@ -1,5 +1,11 @@
 import { HttpAutomationClient } from './clients/automation.ts';
 import type { AutomationClient } from './clients/automation.ts';
+import { HttpAccessClient, HttpAuthClient } from './clients/access.ts';
+import type { AccessClient, AuthClient } from './clients/access.ts';
+import { HttpConversationsClient } from './clients/conversations.ts';
+import type { ConversationsClient } from './clients/conversations.ts';
+import { HttpLlmClient } from './clients/llm.ts';
+import type { LlmClient } from './clients/llm.ts';
 import { HttpRecordsClient, HttpInsightsClient } from './clients/records.ts';
 import type { RecordsClient, InsightsClient } from './clients/records.ts';
 import {
@@ -33,6 +39,7 @@ export interface PlatformIdentity {
   tenant: Workspace;
   actor: Actor & { displayName: string };
   role: PlatformRole;
+  platformOperator?: boolean;
   workspaces: Workspace[];
 }
 
@@ -155,7 +162,12 @@ export interface PlatformHealth {
   version: string;
 }
 
-export type PlatformDenialCode = Denied['code'] | Failed['code'] | 'unknown';
+export type PlatformDenialCode =
+  | Denied['code']
+  | Failed['code']
+  | 'unknown'
+  | 'step_up_required'
+  | 'unauthenticated';
 export const denialMessages = {
   forbidden: 'You don’t have permission to do this.',
   not_found: 'This item could not be found.',
@@ -168,6 +180,8 @@ export const denialMessages = {
   provider_error: 'The configured provider could not complete the action.',
   unknown: 'Reconcile the outcome before trying again.',
   unavailable: 'The platform is unavailable. Try again shortly.',
+  step_up_required: 'Sign in again with MFA to continue.',
+  unauthenticated: 'Your session has ended. Sign in to continue.',
 } satisfies Record<PlatformDenialCode, string>;
 
 export class PlatformError extends Error {
@@ -180,6 +194,10 @@ export class PlatformError extends Error {
 }
 
 export interface PlatformClient {
+  readonly auth: AuthClient;
+  readonly access: AccessClient;
+  readonly conversations: ConversationsClient;
+  readonly llm: LlmClient;
   readonly automation: AutomationClient;
   readonly records: RecordsClient;
   readonly insights: InsightsClient;
@@ -209,7 +227,7 @@ export interface PlatformClient {
 
 export interface HttpPlatformClientOptions {
   baseUrl?: string;
-  token: string;
+  token?: string;
   fetch?: typeof fetch;
 }
 
@@ -239,19 +257,28 @@ export function unwrapTool(result: { state: string; output?: unknown; code?: str
 function responseDenial(body: unknown, status: number): PlatformDenialCode | undefined {
   if (typeof body === 'object' && body !== null && 'code' in body) {
     const code = body.code;
-    if (typeof code === 'string' && Object.hasOwn(denialMessages, code)) {
+    if (
+      typeof code === 'string' &&
+      Object.hasOwn(denialMessages, code) &&
+      (status !== 401 || code === 'step_up_required')
+    ) {
       return code as PlatformDenialCode;
     }
   }
   if (status === 400) return 'invalid_input';
+  if (status === 401) return 'unauthenticated';
   if (status === 409) return 'idempotency_conflict';
-  if (status === 401 || status === 403) return 'forbidden';
+  if (status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
   if (status === 429) return 'quota_exceeded';
   return undefined;
 }
 
 export class HttpPlatformClient implements PlatformClient {
+  readonly auth: AuthClient;
+  readonly access: AccessClient;
+  readonly conversations: ConversationsClient;
+  readonly llm: LlmClient;
   readonly automation: AutomationClient;
   readonly records: RecordsClient;
   readonly insights: InsightsClient;
@@ -259,7 +286,7 @@ export class HttpPlatformClient implements PlatformClient {
   readonly credentials: CredentialsClient;
   readonly connectors: ConnectorsClient;
   private readonly root: string;
-  private readonly token: string;
+  private readonly token?: string;
   private readonly fetcher: typeof fetch;
 
   constructor({
@@ -274,14 +301,19 @@ export class HttpPlatformClient implements PlatformClient {
     const records = new HttpRecordsClient(request, () => this.getMe());
     this.records = records;
     this.insights = new HttpInsightsClient(records);
-    this.automation = new HttpAutomationClient(request, async (path, init) => {
+    const open = async (path: string, init: RequestInit) => {
       const response = await this.fetch(path, init);
       if (!response.ok) {
         const payload = await response.json().catch(() => undefined);
         throw new PlatformError(responseDenial(payload, response.status) ?? 'unavailable');
       }
       return response;
-    });
+    };
+    this.automation = new HttpAutomationClient(request, open);
+    this.auth = new HttpAuthClient(request);
+    this.access = new HttpAccessClient(request);
+    this.conversations = new HttpConversationsClient(request, open);
+    this.llm = new HttpLlmClient(request, open);
     this.billing = new HttpBillingClient(request);
     this.credentials = new HttpCredentialsClient(request);
     this.connectors = new HttpConnectorsClient(request);
@@ -291,7 +323,8 @@ export class HttpPlatformClient implements PlatformClient {
     try {
       return await this.fetcher(this.root + path, {
         ...init,
-        headers: { ...init.headers, Authorization: 'Bearer ' + this.token },
+        ...(this.token ? {} : { credentials: 'include' }),
+        headers: { ...init.headers, ...(this.token && { Authorization: 'Bearer ' + this.token }) },
       });
     } catch {
       if (init.signal?.aborted) throw init.signal.reason;

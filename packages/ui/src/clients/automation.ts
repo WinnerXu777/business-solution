@@ -7,6 +7,7 @@ import type {
 } from '@bs/contracts';
 import { PlatformError, unwrapTool } from '../platform-client.ts';
 import type { RequestJson } from '../platform-client.ts';
+import { sseData } from './sse.ts';
 import type { WorkflowDefinition, WorkflowTarget, WorkflowStep } from './workflow-definition.ts';
 
 export interface BotDefinition {
@@ -55,6 +56,7 @@ export interface BotEvent {
   tool?: string;
   state?: string;
   status?: string;
+  delta?: string;
 }
 
 export interface WorkflowRun {
@@ -135,37 +137,12 @@ export class HttpAutomationClient implements AutomationClient {
       signal,
       headers: { Accept: 'text/event-stream', 'Last-Event-ID': String(after) },
     });
-    if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) {
-      throw new PlatformError('unavailable');
-    }
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let data: string[] = [];
-    try {
-      for (;;) {
-        const { value, done } = await reader.read();
-        if (done || signal.aborted) return;
-        buffer += decoder.decode(value, { stream: true });
-        let newline = buffer.indexOf('\n');
-        while (newline !== -1) {
-          const line = buffer.slice(0, newline).replace(/\r$/, '');
-          buffer = buffer.slice(newline + 1);
-          if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''));
-          if (!line && data.length) {
-            const event = JSON.parse(data.join('\n')) as BotEvent;
-            data = [];
-            if (event.runId === id && Number.isSafeInteger(event.id) && event.id > after) {
-              after = event.id;
-              yield event;
-            }
-          }
-          newline = buffer.indexOf('\n');
-        }
+    for await (const data of sseData(response, signal)) {
+      const event = JSON.parse(data) as BotEvent;
+      if (event.runId === id && Number.isSafeInteger(event.id) && event.id > after) {
+        after = event.id;
+        yield event;
       }
-    } finally {
-      await reader.cancel().catch(() => undefined);
-      reader.releaseLock();
     }
   }
 
