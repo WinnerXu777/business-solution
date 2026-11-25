@@ -16,6 +16,7 @@ import {
 import type { TableColumn } from '../components.tsx';
 import { RemoteContent, useAction, useResource } from '../data.tsx';
 import type { AuditQuery, UsageQuery } from '../platform-client.ts';
+import { SetupChecklist } from './onboarding.tsx';
 
 const timestamp = new Intl.DateTimeFormat('en-CA', {
   dateStyle: 'medium',
@@ -90,6 +91,7 @@ export function OverviewScreen({ client }: ScreenProps) {
             </Card>
           </div>
           <div className="bs-stack">
+            <SetupChecklist client={client} />
             <Card title="Module allowances">
               <Table
                 label="Module allowances"

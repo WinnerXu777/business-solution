@@ -4,6 +4,7 @@ import type {
   InputHTMLAttributes,
   ReactNode,
   SelectHTMLAttributes,
+  TextareaHTMLAttributes,
 } from 'react';
 
 export function Button({
@@ -37,6 +38,13 @@ export function Input({ className = '', ...props }: InputHTMLAttributes<HTMLInpu
 
 export function Select({ className = '', ...props }: SelectHTMLAttributes<HTMLSelectElement>) {
   return <select className={'bs-input ' + className} {...props} />;
+}
+
+export function Textarea({
+  className = '',
+  ...props
+}: TextareaHTMLAttributes<HTMLTextAreaElement>) {
+  return <textarea className={'bs-input ' + className} {...props} />;
 }
 
 export function Field({
@@ -349,6 +357,38 @@ function Overlay({ title, children, onClose, busy, drawer }: DialogProps & { dra
       className={drawer ? 'bs-overlay bs-drawer' : 'bs-overlay'}
       aria-labelledby={id}
       aria-modal="true"
+      onKeyDown={(event) => {
+        const dialog = event.currentTarget;
+        if ((event.target as HTMLElement).closest('dialog') !== dialog) return;
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          event.stopPropagation();
+          if (!busy) onClose();
+        }
+        if (event.key !== 'Tab') return;
+        const controls = Array.from(
+          dialog.querySelectorAll<HTMLElement>(
+            'a[href], button, input, select, textarea, summary, [tabindex]',
+          ),
+        ).filter(
+          (element) =>
+            element.tabIndex >= 0 &&
+            !element.matches(':disabled, input[type="hidden"]') &&
+            !element.closest('[hidden], [inert]') &&
+            element.closest('dialog') === dialog,
+        );
+        const first = controls[0];
+        const last = controls.at(-1);
+        const active = document.activeElement;
+        if (
+          !first ||
+          !controls.includes(active as HTMLElement) ||
+          active === (event.shiftKey ? first : last)
+        ) {
+          event.preventDefault();
+          (event.shiftKey ? last : first)?.focus();
+        }
+      }}
       onCancel={(event) => {
         event.preventDefault();
         if (!busy) onClose();

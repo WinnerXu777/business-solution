@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button, EmptyState, Skeleton } from './components.tsx';
 import { denialMessages, PlatformError } from './platform-client.ts';
+import type { PlatformDenialCode } from './platform-client.ts';
 
 export type ResourceState<T> =
   | { status: 'loading' }
-  | { status: 'error'; message: string }
+  | { status: 'error'; message: string; code?: PlatformDenialCode }
   | { status: 'ready'; data: T };
 
 export function errorMessage(error: unknown) {
@@ -23,7 +24,15 @@ export function useResource<T>(load: () => Promise<T>) {
         const data = await load();
         if (current) setResult({ load, state: { status: 'ready', data } });
       } catch (error) {
-        if (current) setResult({ load, state: { status: 'error', message: errorMessage(error) } });
+        if (current)
+          setResult({
+            load,
+            state: {
+              status: 'error',
+              message: errorMessage(error),
+              code: error instanceof PlatformError ? error.code : undefined,
+            },
+          });
       }
     }
     void read();
@@ -37,8 +46,10 @@ export function useResource<T>(load: () => Promise<T>) {
 }
 
 export type Notice = (message: string, tone?: 'success' | 'danger') => void;
+export const ActionAuthContext = createContext<(error: PlatformError) => boolean>(() => false);
 
 export function useAction(notify: Notice) {
+  const handleAuth = useContext(ActionAuthContext);
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
   const active = useRef(true);
@@ -56,7 +67,9 @@ export function useAction(notify: Notice) {
       const result = await action();
       if (active.current) onSuccess(result);
     } catch (error) {
-      if (active.current) notify(errorMessage(error), 'danger');
+      if (active.current && !(error instanceof PlatformError && handleAuth(error))) {
+        notify(errorMessage(error), 'danger');
+      }
     } finally {
       running.current = false;
       if (active.current) setBusy(false);
