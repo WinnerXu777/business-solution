@@ -1,0 +1,19 @@
+{
+  "name": "@bs/sdk",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "bin": {
+    "bs": "./bin/bs.ts"
+  },
+  "scripts": {
+    "codegen": "node scripts/generate.mjs",
+    "schema-check": "node scripts/generate.mjs --check"
+  },
+  "dependencies": {
+    "@bs/contracts": "workspace:*"
+  }
+}
