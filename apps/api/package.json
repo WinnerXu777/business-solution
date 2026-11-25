@@ -10,6 +10,7 @@
     "@bs/business": "workspace:*",
     "@bs/contracts": "workspace:*",
     "@bs/core": "workspace:*",
+    "ajv": "8.20.0",
     "fastify": "5.6.2",
     "pg": "^8.23.1"
   },
