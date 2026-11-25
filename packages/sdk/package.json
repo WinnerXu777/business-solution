@@ -9,6 +9,10 @@
   "bin": {
     "bs": "./bin/bs.ts"
   },
+  "scripts": {
+    "codegen": "node scripts/generate.mjs",
+    "schema-check": "node scripts/generate.mjs --check"
+  },
   "dependencies": {
     "@bs/contracts": "workspace:*"
   }

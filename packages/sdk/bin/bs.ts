@@ -1,3 +1,6 @@
 #!/usr/bin/env node
-// bs CLI entry point.
-export {};
+import { runCli } from '../src/cli.ts';
+
+const cancellation = new AbortController();
+process.once('SIGINT', () => cancellation.abort());
+process.exitCode = await runCli(process.argv.slice(2), { signal: cancellation.signal });
