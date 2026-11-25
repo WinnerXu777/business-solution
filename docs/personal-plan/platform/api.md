@@ -78,3 +78,64 @@ Import the platform factory from `packages/core/src/platform/index.ts`. Keep one
 - `credentialAccessor(evidence, async (secret) => ...)` supplies a buffer to the selected adapter callback after committing the redacted access audit. Each use rechecks the current credential, so rotation updates the same reference and revocation stops subsequent uses. Finish secret-dependent work in the callback and avoid copying the buffer into logs or results. A request already holding a buffer can finish. Set `BS_PLATFORM_VAULT_MASTER_KEY` to a canonical base64-encoded 32-byte local key or inject a fixture key in tests. The vault uses a wrapped, random key per tenant. Losing the master key makes existing credentials unreadable.
 - `billing.recordUsage(context, event)` accepts a typed SKU outcome or premium/BYO provider attempt with IDs, units, quantity, time and the applicable price version. The fixture facade maps evidenced outcomes from its existing gateway counters. The fixture outcome and billing writes have separate transaction boundaries. When Lane A wires durable usage ingestion, pass `fixtureUsageBridge: false` and feed the ledger from the committed gateway outcomes and dispatch attempts. Reserve hard caps before dispatch.
 - The API-owned `platformPostgres(pool)` adapter accepts the existing `pg.Pool`. Pass it as `persistence` when creating services. Core depends on an injected query interface. Apply [the staging migration](migrations/001_platform_state.sql) in the infrastructure migration path first. The repository scopes rows by tenant and collection. The same client and transaction commit state and redacted audit with a per-tenant advisory lock. Use a runtime role with row DML privileges and without schema ownership or TRUNCATE. Pool startup and shutdown belong to the app host.
+
+## Consent and outbound checks
+
+| Method and path under `/platform/v1` | Behavior |
+| --- | --- |
+| `GET /consents` | Lists the current tenant's consent ledger, including expired and withdrawn grants. |
+| `POST /consents` | Accepts `contactId`, `channel`, `purpose`, `basis`, `source`, `evidenceRef`, and optional `expiresAt`. Implied consent requires a future expiry. Returns 201 with the unsubscribe token once. |
+| `POST /consents/{id}/withdraw` | Revokes the grant and any prior grants for the same contact, destination, channel, and purpose. A repeat returns the existing withdrawal. |
+| `POST /consents/unsubscribe` | Public token redemption. Accepts `tenantId`, `consentId`, and `token` in the body. A valid token withdraws the grant and suppresses its destination and channel for the tenant across purposes. Well-formed submissions always receive 204. |
+| `GET /suppressions` | Lists the tenant suppression ledger. Platform operators can select `?scope=platform`. |
+| `POST /suppressions` | Accepts `channel`, `destination`, and `reason` of `opt_out`, `do_not_contact`, or `policy`. Returns 201 with the existing or new entry. Platform operators can select `?scope=platform`. |
+| `POST /contact-check` | Accepts `contactId`, `channel`, and `purpose`. Returns the current `allow` decision and `reasons`, plus the matching `consentId` on allowance. |
+
+The protected compliance routes require `settings.manage` and step-up when enabled. Platform suppression access requires a platform operator session and step-up when enabled. Notification routes require `platform.read` and a person identity.
+
+The fixture contacts use Toronto time and the synthetic voice number `+14165550107` is on the fixture DNCL. The contact source supplies recipient IANA time zone, verified destination, outreach flag, completeness of history, and optionally a cadence key to group multiple contacts under one debtor. Email destinations are case-normalized and phone destinations use E.164. Platform suppression takes precedence over tenant suppression, followed by the fixture DNCL for voice. Consent binds the current destination, channel, and purpose. A later grant must have a timestamp after the last withdrawal for its scope. A suppression continues to block even after a fresh grant.
+
+`services.contacts.canContact(tenantId, contactId, channel, purpose, at)` is read-only. Call `reserveContact` at effect dispatch with the stable action ID and actual recipient to recheck and reserve a slot atomically with the tenant attempt ledger. The guarded message adapter applies that check to each approved send, including each message in a workflow. `fixtureMessages` enables it on the locally constructed gateway. An injected gateway must guard its own effect adapters with `guardMessageAdapter` and supply the governed purpose. Log staff attempts with `logManualContact`. Reservations count through uncertain or failed attempts. The host must cancel or recheck any separately queued effects and coordinate with the carrier for active calls.
+
+**TODO-verify** with counsel before real outreach. The demo uses a weekday 09:00–17:00 recipient-local window, optional blocked local dates, and three attempts across channels and purposes per tenant/cadence key in a rolling seven days. Express consent is required for fixture voice and collections SMS. Verify holidays, CASL basis and expiry rules, appropriate scopes and consent text, the applicable DNCL and ADAD obligations, collection rules, sender disclosure, token delivery and abuse controls, and routing for ineligible debtor classes. The local guard runs alongside approval and balance checks. It provides no legal eligibility determination.
+
+## Privacy and retention
+
+| Method and path under `/platform/v1` | Behavior |
+| --- | --- |
+| `GET /privacy-requests` | Lists requests and status history for the current tenant. |
+| `POST /privacy-requests` | Accepts `subjectId` and `kind` of `access`, `export`, or `deletion`. Returns 201 with a due date and `pending_verification` status. |
+| `POST /privacy-requests/{id}/verify` | Verifies a `proofRef` via the injected tenant, subject, and request-scoped verifier. The reference stays out of request history. |
+| `POST /privacy-requests/{id}/complete` | After verification, returns the request and an access/export bundle when applicable. Deletion blocked by holds, minimum retention, or unclassified fields returns `retention_blocked` with reasons and can be retried. |
+| `GET /retention/policies` | Lists the default durations for public, internal, personal, sensitive, and financial data. |
+| `POST /retention/dry-run` | Accepts optional `asOf`. Reports tenant record references, their scheduled purge times, hold IDs, and eligibility. It leaves source records untouched. |
+
+Inject `privacy: {records, verifyIdentity}` with a synthetic record source. A missing injection makes proof verification and source operations unavailable. The source must scope records to the tenant and handle safe deletion for an identified subject, checking record versions atomically. It must return the original count for a successfully committed deletion operation ID on retry. The core also filters returned rows by tenant and subject. Deletion defers the whole request when any scoped record is blocked. Evidence and holds are managed by trusted code through `addHold` and `releaseHold`. A hold can apply to a subject or an entire tenant and matches both record and field classes. Use a source that accounts for joint records before returning subject-scoped deletion candidates.
+
+Bundles are JSON with record IDs, types, versions, classes, and source fields. A repeat completion of a verified export rebuilds it from the current source. The core keeps workflow state and audit IDs and does not persist bundle contents. The field registry classifies contact, consent, invoice, audit, and platform log fields. It masks personal, sensitive, financial, and unknown fields in log projections. Purge scheduling uses the longest applicable duration among record and field classes. Unclassified shapes block deletion and are flagged in dry runs.
+
+**TODO-verify** the demo's 30-calendar-day request deadline, proof and disclosure procedures, purge ages of 365/365/180/30/2,192 days respectively, and the 2,192-day financial minimum. Confirm the proper tax-record clock and hold release criteria, privacy timelines and exemptions, recipient delivery, processor and backup propagation, and any additional regulated classes.
+
+## Events, webhooks, and notifications
+
+| Method and path under `/platform/v1` | Behavior |
+| --- | --- |
+| `GET /webhooks` | Lists tenant subscriptions and their event filters. |
+| `POST /webhooks` | Accepts a synthetic HTTPS `.example` `url` and nonempty `events` array. Returns 201 with the signing secret once. |
+| `POST /webhooks/{id}/test` | Queues a `webhook.test` event for that subscription and returns 202. |
+| `GET /webhooks/{id}/deliveries` | Lists deliveries with attempt history, status codes, retry times, and replay links. |
+| `POST /webhooks/deliveries/{id}/replay` | Queues a new delivery from a dead letter and returns 202. A repeat returns that replay. |
+| `GET /notifications` | Lists events addressed to the authenticated user in the current tenant and their read timestamps. |
+| `POST /notifications/{id}/read` | Marks that user's notification as read and preserves the timestamp on retry. |
+
+`services.events.publish(tenantId, event, notifyUserIds)` takes a stable producer event ID, timestamp, event type, and typed ID-only metadata. Event types are `record.changed`, `approval.requested`, `approval.decided`, `workflow.run.settled`, `invoice.finalized`, and `consent.withdrawn`. The fixture gateway emits events for approval requests and decisions, PO creation, and successful simulated workflow settlement. Billing finalization and ledger withdrawal enqueue in the same platform persistence transaction as their source change. Other producers can publish through the typed seam or call `appendInTransaction` inside an existing platform transaction. Pass only users authorized for that event. Exact event replays retain the original fanout and notification state.
+
+The host supplies a fake `webhookTransport` and ticks `services.events.deliverDue(tenantId)` for each active demo tenant. The service leaves deliveries queued if no transport is configured. A configured platform master key derives one secret per tenant and subscription. Treat it as a stable key for the lifetime of current subscriptions. Each attempt signs the UTF-8 string formed by joining the Unix timestamp in seconds, delivery ID, and exact JSON body with dots. Verify `x-platform-signature` as `v1=` plus the lowercase hex HMAC-SHA256, using `x-platform-timestamp` and `x-platform-delivery` and a constant-time comparison. Receivers should bound signature freshness and dedupe the stable event ID. Delivery retries reuse the delivery ID. Replays get a new delivery ID and retain the event ID.
+
+A 2xx response settles a delivery. Other responses, transport failures, and expired delivery claims can retry after 30 seconds and two minutes, up to three attempts per delivery. The worker uses a 30-second claim and a 10-second transport deadline. An interrupted send may be delivered twice. The attempt ledger retains status data and omits provider response bodies.
+
+## Remaining host integration
+
+- Register the existing platform plugin with the host's verified identity, and inject the demo privacy adapters and fake webhook transport. Schedule the worker tick. An injected application gateway needs the per-effect guard. Keep unsubscribe bodies, webhook secrets, privacy proofs, export bundles, and evidence out of request and response logs.
+- For durable operation, connect the existing platform persistence adapter and migration. The memory implementation is process-local. Platform suppression and the final external call have a timing boundary. A distributed host needs an authoritative shared suppression check at each dispatch, coordinated cancellation, and tests for that race. The fixture gateway bridge publishes after its underlying write and has a separate transaction boundary. General governed record writes and all workflow terminal outcomes need publication from their transactional outboxes.
+- The synthetic scope has no network transport, live DNCL lookups, or automatic data purge. Before broadening it, specify webhook egress and rotation controls, pagination and expiry for event/outbox history, and durable privacy source and hold reconciliation.

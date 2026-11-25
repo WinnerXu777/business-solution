@@ -16,6 +16,7 @@ import {
 import { validates } from '../governance/catalog.ts';
 import type { IdentityVerifier } from '../governance/identity.ts';
 import { registerAccessRoutes } from './access-routes.ts';
+import { registerComplianceRoutes, reportPlatformError } from './compliance-routes.ts';
 import document from './openapi.json' with { type: 'json' };
 
 export {
@@ -123,7 +124,7 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     if (error instanceof InvalidRequest || clientError) {
       return reply.code(400).send({ error: 'forbidden' });
     }
-    request.log.error('Platform request failed');
+    reportPlatformError(request);
     return reply.code(503).send({ error: 'unavailable' });
   });
 
@@ -183,6 +184,14 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     requireOperator,
     validate,
     query,
+  });
+  registerComplianceRoutes(app, {
+    base,
+    services,
+    context,
+    requirePermission,
+    requireOperator,
+    validate,
   });
 
   app.get(base + '/me', { config: { platformAccess: true } }, async (request) =>

@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { AuditEntry, CallEnvelope, Denied } from '@bs/contracts';
 import type { PlatformIdentity } from './identity.ts';
 import { PlatformQueue, type PlatformPersistence, type TenantRepository } from './repository.ts';
+import { redactFields } from './classification.ts';
 
 export type PlatformCode = Exclude<Denied['code'], 'suppressed'> | 'unavailable';
 
@@ -46,7 +47,7 @@ export class PlatformAudit {
     state: AuditEntry['state'] = 'ok',
     subjectId?: string,
   ) {
-    return this.sink.append({
+    const entry: AuditEntry = {
       id: 'audit-' + randomUUID(),
       tenantId: context.tenantId,
       actor: { id: context.actor.id, kind: context.actor.kind },
@@ -58,7 +59,9 @@ export class PlatformAudit {
       state,
       policyVersion: 'fixture-policy-v1',
       occurredAt: this.now(),
-    });
+    };
+    // The audit registry classifies every field in this allowlisted AuditEntry projection.
+    return this.sink.append(redactFields('audit', entry) as unknown as AuditEntry);
   }
 }
 

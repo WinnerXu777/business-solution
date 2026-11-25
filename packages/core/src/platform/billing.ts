@@ -225,6 +225,7 @@ export class BillingLedger {
   private readonly initialPlan?: (
     tenantId: string,
   ) => (PlanInput & { createdAt: string }) | undefined;
+  private readonly onFinalize?: (tenantId: string, invoice: FinalInvoice) => Promise<unknown>;
 
   constructor(
     repositories: BillingRepositories,
@@ -233,6 +234,7 @@ export class BillingLedger {
     startsAt: string,
     options: BillingOptions = {},
     initialPlan?: BillingLedger['initialPlan'],
+    onFinalize?: BillingLedger['onFinalize'],
   ) {
     this.repositories = repositories;
     this.audit = audit;
@@ -244,6 +246,7 @@ export class BillingLedger {
     this.taxRegion = options.taxRegion ?? (() => 'ON');
     this.settlement = options.settlement ?? fakeSettlement;
     this.initialPlan = initialPlan;
+    this.onFinalize = onFinalize;
   }
 
   skus() {
@@ -490,6 +493,7 @@ export class BillingLedger {
         settlement: this.settlement.simulate(tenantId, structuredClone(draft)),
       };
       await this.audit.record(context, 'platform.billing.invoice.finalize', 'ok', id);
+      await this.onFinalize?.(tenantId, invoice);
       await this.repositories.invoices.put(tenantId, id, invoice);
       return invoice;
     });
