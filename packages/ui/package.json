@@ -21,6 +21,7 @@
     "vitest": "^3.2.7"
   },
   "scripts": {
-    "test": "vitest run"
+    "dev": "node dev/preview.mjs",
+    "test": "vitest run --configLoader native"
   }
 }

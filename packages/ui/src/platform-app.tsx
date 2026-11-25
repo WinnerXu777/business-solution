@@ -1,0 +1,463 @@
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import type { ComponentType } from 'react';
+import { createPortal } from 'react-dom';
+import {
+  Badge,
+  Card,
+  EmptyState,
+  Field,
+  Select,
+  StatusPill,
+  Switch,
+  Table,
+  Toast,
+} from './components.tsx';
+import { RemoteContent, useAction, useResource } from './data.tsx';
+import type { Notice } from './data.tsx';
+import { PlatformError } from './platform-client.ts';
+import type {
+  PlatformClient,
+  PlatformIdentity,
+  RegistryEntry,
+  Workspace,
+} from './platform-client.ts';
+import { ApprovalsScreen } from './screens/approvals.tsx';
+import { ConnectionsScreen } from './screens/connections.tsx';
+import { ProvidersScreen } from './screens/providers.tsx';
+import { AuditScreen, ModulesScreen, OverviewScreen, UsageScreen } from './screens/reporting.tsx';
+import './styles.css';
+
+type Theme = 'light' | 'dark';
+
+export interface PlatformRouteContext {
+  client: PlatformClient;
+  me: PlatformIdentity;
+  workspace: Workspace;
+  path: string;
+  notify: Notice;
+}
+export interface PlatformRoute {
+  path: string;
+  title: string;
+  component: ComponentType<PlatformRouteContext>;
+  navLabel?: string;
+}
+export interface PlatformAppProps {
+  client: PlatformClient;
+  extraRoutes?: readonly PlatformRoute[];
+  resolveWorkspaceClient?: (workspace: Workspace) => Promise<PlatformClient>;
+}
+
+const themeKey = 'bs-platform-theme';
+function preferredTheme(): Theme {
+  try {
+    const stored = globalThis.localStorage?.getItem(themeKey);
+    if (stored === 'light' || stored === 'dark') return stored;
+  } catch {
+    // The current session can still use either theme when storage is unavailable.
+  }
+  return globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+function normalizePath(value: string) {
+  return '/' + value.replace(/^\/+|\/+$/g, '');
+}
+
+function readPath() {
+  return normalizePath(window.location.hash.slice(1).split('?')[0]);
+}
+
+function subscribePath(callback: () => void) {
+  window.addEventListener('hashchange', callback);
+  return () => window.removeEventListener('hashchange', callback);
+}
+
+function RegistryPlaceholder({
+  client,
+  type,
+}: PlatformRouteContext & { type: 'bots' | 'workflows' }) {
+  const resource = useResource(
+    useCallback(() => (type === 'bots' ? client.getBots() : client.getWorkflows()), [type, client]),
+  );
+  return (
+    <Card title={type === 'bots' ? 'Bot registry' : 'Workflow registry'}>
+      <p className="bs-muted">The editor and runtime screens will appear here once connected.</p>
+      <RemoteContent resource={resource} label={type}>
+        {(rows) => (
+          <Table<RegistryEntry>
+            label={type + ' registry'}
+            rows={rows}
+            rowKey={(row) => row.id}
+            columns={[
+              { key: 'name', title: 'Name', render: (row) => row.name },
+              { key: 'kind', title: 'Kind', render: (row) => row.kind },
+              { key: 'module', title: 'Module', render: (row) => row.module },
+              {
+                key: 'status',
+                title: 'Status',
+                render: (row) => <StatusPill status={row.status} />,
+              },
+            ]}
+          />
+        )}
+      </RemoteContent>
+    </Card>
+  );
+}
+
+function Placeholder() {
+  return <EmptyState title="This screen is awaiting integration." />;
+}
+
+const baseRoutes: readonly PlatformRoute[] = [
+  { path: '/', title: 'Overview', component: OverviewScreen },
+  { path: '/approvals', title: 'Approvals', component: ApprovalsScreen },
+  {
+    path: '/bots',
+    title: 'Bots',
+    component: (props) => <RegistryPlaceholder {...props} type="bots" />,
+  },
+  {
+    path: '/workflows',
+    title: 'Workflows',
+    component: (props) => <RegistryPlaceholder {...props} type="workflows" />,
+  },
+  { path: '/erp', title: 'ERP', component: Placeholder },
+  { path: '/crm', title: 'CRM', component: Placeholder },
+  { path: '/insights', title: 'Insights', component: Placeholder },
+  { path: '/providers', title: 'Providers', component: ProvidersScreen },
+  { path: '/modules', title: 'Modules and billing', component: ModulesScreen },
+  { path: '/connections', title: 'Connections', component: ConnectionsScreen },
+  { path: '/audit', title: 'Audit log', component: AuditScreen },
+  { path: '/usage', title: 'Usage', component: UsageScreen },
+  { path: '/settings', title: 'Settings', component: Placeholder },
+];
+
+const navIcons = ['◫', '✓', '◉', '◇', '▤', '◎', '◈', '⇆', '▦', '⊞', '≡', '▥', '⚙'];
+
+function SettingsScreen({
+  me,
+  theme,
+  setTheme,
+}: {
+  me: PlatformIdentity;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+}) {
+  return (
+    <div className="bs-stack">
+      <Card title="Profile">
+        <dl className="bs-details">
+          <dt>Name</dt>
+          <dd>{me.actor.displayName}</dd>
+          <dt>Actor ID</dt>
+          <dd>{me.actor.id}</dd>
+          <dt>Role</dt>
+          <dd>
+            <Badge tone="accent">{me.role}</Badge>
+          </dd>
+          <dt>Tenant</dt>
+          <dd>{me.tenant.name}</dd>
+        </dl>
+      </Card>
+      <Card title="Appearance">
+        <Switch
+          label="Dark theme"
+          checked={theme === 'dark'}
+          onChange={(active) => setTheme(active ? 'dark' : 'light')}
+        />
+      </Card>
+    </div>
+  );
+}
+
+function TopBar({
+  me,
+  client,
+  activeWorkspace,
+  onSwitch,
+  notify,
+}: {
+  me: PlatformIdentity;
+  client: PlatformClient;
+  activeWorkspace?: Workspace;
+  onSwitch?: (workspace: Workspace) => Promise<void>;
+  notify: Notice;
+}) {
+  const options = useResource(useCallback(() => client.getWorkspaces(), [client]));
+  const { busy, run } = useAction(notify);
+  const workspace =
+    activeWorkspace ??
+    me.workspaces.find((item) => item.id === me.tenant.id) ??
+    me.workspaces[0] ??
+    me.tenant;
+  const workspaces =
+    options.state.status === 'ready'
+      ? options.state.data.filter((item) => me.workspaces.some((allowed) => allowed.id === item.id))
+      : me.workspaces;
+  const choices = [workspace, ...workspaces.filter((item) => item.id !== workspace.id)];
+  const profileMenu = useRef<HTMLDetailsElement>(null);
+  const profileTrigger = useRef<HTMLElement>(null);
+
+  return (
+    <header className="bs-topbar">
+      <div className="bs-workspace">
+        <Field
+          label="Workspace"
+          error={options.state.status === 'error' ? options.state.message : undefined}
+        >
+          {(props) => (
+            <Select
+              {...props}
+              value={workspace.id}
+              disabled={busy || choices.length < 2 || !onSwitch}
+              onChange={(event) => {
+                const id = event.target.value;
+                if (!onSwitch) return;
+                void run(
+                  async () => {
+                    await onSwitch(await client.getWorkspace(id));
+                  },
+                  () => {},
+                );
+              }}
+            >
+              {choices.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.name}
+                </option>
+              ))}
+            </Select>
+          )}
+        </Field>
+        {options.state.status === 'error' && (
+          <button type="button" className="bs-link-button" onClick={options.reload}>
+            Retry workspaces
+          </button>
+        )}
+      </div>
+      <div className="bs-profile">
+        <Badge tone="accent">{me.role}</Badge>
+        <details
+          className="bs-user-menu"
+          ref={profileMenu}
+          onKeyDown={(event) => {
+            if (event.key === 'Escape' && profileMenu.current?.open) {
+              profileMenu.current.open = false;
+              profileTrigger.current?.focus();
+            }
+          }}
+        >
+          <summary ref={profileTrigger} aria-label={'User menu, ' + me.actor.displayName}>
+            <span className="bs-avatar" aria-hidden="true">
+              {me.actor.displayName
+                .split(' ')
+                .slice(0, 2)
+                .map((part) => part[0])
+                .join('')}
+            </span>
+            <span>{me.actor.displayName}</span>
+          </summary>
+          <div className="bs-user-popover">
+            <strong>{me.actor.displayName}</strong>
+            <small className="bs-subline">{me.actor.id}</small>
+            <a
+              href="#/settings"
+              onClick={() => {
+                if (profileMenu.current) profileMenu.current.open = false;
+              }}
+            >
+              Profile settings
+            </a>
+          </div>
+        </details>
+      </div>
+    </header>
+  );
+}
+
+function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: PlatformAppProps) {
+  const [selection, setSelection] = useState<{
+    client: PlatformClient;
+    workspace: Workspace;
+    identity: PlatformIdentity;
+  }>();
+  const sessionClient = selection?.client ?? client;
+  const identity = useResource(
+    useCallback(
+      () => (selection ? Promise.resolve(selection.identity) : client.getMe()),
+      [client, selection],
+    ),
+  );
+  const path = useSyncExternalStore(subscribePath, readPath, () => '/');
+  const [theme, setTheme] = useState(preferredTheme);
+  const [notices, setNotices] = useState<
+    { id: number; message: string; tone: 'success' | 'danger' }[]
+  >([]);
+  const sequence = useRef(0);
+  const title = useRef<HTMLHeadingElement>(null);
+  const previousPath = useRef(path);
+  const body = useRef<HTMLDivElement>(null);
+  const [toastTarget, setToastTarget] = useState<HTMLDialogElement | null>(null);
+
+  const notify: Notice = useCallback((message, tone = 'success') => {
+    const id = ++sequence.current;
+    setNotices((items) => [...items.slice(-3), { id, message, tone }]);
+  }, []);
+  const routes = new Map(baseRoutes.map((route) => [route.path, route]));
+  for (const route of extraRoutes) {
+    const routePath = normalizePath(route.path);
+    routes.set(routePath, { ...route, path: routePath });
+  }
+  const route = routes.get(path);
+  const nav = [...routes.values()].filter(
+    (item) => baseRoutes.some(({ path }) => item.path === path) || item.navLabel,
+  );
+  const activeNav =
+    nav.find((item) => item.path === path) ??
+    [...nav].reverse().find((item) => item.path !== '/' && path.startsWith(item.path + '/'));
+
+  useEffect(() => {
+    try {
+      globalThis.localStorage?.setItem(themeKey, theme);
+    } catch {
+      // The current theme still applies when storage is unavailable.
+    }
+  }, [theme]);
+
+  useEffect(() => {
+    if (previousPath.current !== path) {
+      previousPath.current = path;
+      title.current?.focus();
+    }
+  }, [path]);
+
+  // Keep notifications in the active modal's focus boundary.
+  useEffect(() => {
+    const root = body.current!;
+    const observer = new MutationObserver(() => {
+      setToastTarget(
+        Array.from(root.querySelectorAll<HTMLDialogElement>('.bs-overlay[open]')).at(-1) ?? null,
+      );
+    });
+    observer.observe(root, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ['open'],
+    });
+    return () => observer.disconnect();
+  }, []);
+  async function switchWorkspace(workspace: Workspace) {
+    if (!resolveWorkspaceClient) return;
+    const next = await resolveWorkspaceClient(workspace);
+    if (next === sessionClient) throw new PlatformError('forbidden');
+    const nextMe = await next.getMe();
+    if (
+      nextMe.tenant.id !== workspace.id &&
+      !nextMe.workspaces.some((item) => item.id === workspace.id)
+    ) {
+      throw new PlatformError('forbidden');
+    }
+    setNotices([]);
+    setSelection({ client: next, workspace, identity: nextMe });
+  }
+
+  const notifications = (
+    <div className="bs-notices" aria-label="Notifications">
+      {notices.map((notice) => (
+        <Toast
+          key={notice.id}
+          {...notice}
+          onDismiss={() => setNotices((items) => items.filter((item) => item.id !== notice.id))}
+        />
+      ))}
+    </div>
+  );
+  return (
+    <div className="bs-platform" data-theme={theme} ref={body}>
+      <aside className="bs-sidebar">
+        <a className="bs-brand" href="#/" aria-label="Rivetquay overview">
+          <span className="bs-brand-mark" aria-hidden="true">
+            R
+          </span>
+          <span>
+            <strong>Rivetquay</strong>
+            <small>Platform console</small>
+          </span>
+        </a>
+        <nav aria-label="Platform navigation">
+          {nav.map((item, index) => (
+            <a
+              key={item.path}
+              href={'#' + item.path}
+              aria-current={activeNav?.path === item.path ? 'page' : undefined}
+            >
+              <span aria-hidden="true" className="bs-nav-icon">
+                {navIcons[index] ?? '·'}
+              </span>
+              {item.navLabel ?? item.title}
+            </a>
+          ))}
+        </nav>
+      </aside>
+      <div className="bs-main">
+        <RemoteContent resource={identity} label="your workspace">
+          {(me) => {
+            const workspace =
+              selection?.workspace ??
+              me.workspaces.find((item) => item.id === me.tenant.id) ??
+              me.workspaces[0] ??
+              me.tenant;
+            const Component = route?.component;
+            return (
+              <>
+                <TopBar
+                  me={me}
+                  client={sessionClient}
+                  notify={notify}
+                  activeWorkspace={workspace}
+                  onSwitch={resolveWorkspaceClient ? switchWorkspace : undefined}
+                />
+                <main className="bs-content">
+                  <h1 ref={title} tabIndex={-1}>
+                    {route?.title ?? 'Page not found'}
+                  </h1>
+                  <div key={workspace.id + ':' + path}>
+                    {path === '/settings' && Component === Placeholder ? (
+                      <SettingsScreen me={me} theme={theme} setTheme={setTheme} />
+                    ) : Component ? (
+                      <Component
+                        client={sessionClient}
+                        me={me}
+                        workspace={workspace}
+                        path={path}
+                        notify={notify}
+                      />
+                    ) : (
+                      <EmptyState title="This route is unavailable.">
+                        <a href="#/">Return to overview</a>
+                      </EmptyState>
+                    )}
+                  </div>
+                </main>
+              </>
+            );
+          }}
+        </RemoteContent>
+      </div>
+      {toastTarget ? createPortal(notifications, toastTarget) : notifications}
+    </div>
+  );
+}
+
+export function PlatformApp(props: PlatformAppProps) {
+  // Reset the session whenever the mounting app replaces its verified client.
+  const [mountedClient, setMountedClient] = useState(props.client);
+  const [sessionKey, setSessionKey] = useState(0);
+  if (props.client !== mountedClient) {
+    setMountedClient(props.client);
+    setSessionKey(sessionKey + 1);
+  }
+  return <PlatformShell key={sessionKey} {...props} />;
+}
