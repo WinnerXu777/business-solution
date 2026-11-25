@@ -11,7 +11,7 @@
     "format:check": "prettier --check .github README.md docs/personal-plan/milestone-1.md apps infra packages scripts tests package.json pnpm-workspace.yaml tsconfig.json",
     "lint": "node scripts/lint.mjs && tsc --noUnusedLocals --noUnusedParameters --noFallthroughCasesInSwitch",
     "typecheck": "tsc",
-    "test": "node --test && uv run --no-sync python -m unittest discover -s workers/tests",
+    "test": "node --test && pnpm --filter @bs/ui test && uv run --no-sync python -m unittest discover -s workers/tests",
     "schema-check": "node packages/contracts/scripts/codegen.mjs --check && node packages/contracts/scripts/seed-sql.mjs --check",
     "codegen": "node packages/contracts/scripts/codegen.mjs && node packages/contracts/scripts/seed-sql.mjs",
     "reset-fixtures": "node infra/reset-fixtures.mjs"
