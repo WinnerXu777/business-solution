@@ -12,14 +12,7 @@ from .definition import (
     Action, ApprovalNode, Definition, Delay, StartInput, WIN_BACK, action_input,
     is_effect, preview, transition, validate_trigger,
 )
-
-
-class WorkflowConflict(ValueError):
-    pass
-
-
-class WorkflowQuota(WorkflowConflict):
-    pass
+from .errors import WorkflowConflict, WorkflowQuota
 
 
 class WorkflowRunner(Protocol):
