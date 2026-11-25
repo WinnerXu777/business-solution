@@ -20,27 +20,118 @@ export type ApprovalMaterial = {
   previews?: MessagePreview[];
 };
 
-type WorkerCommand =
-  | {
-      kind: 'chat';
-      threadId: string;
-      envelope: CallEnvelope;
-      chat: RunChatInput;
-      proposal: ToolProposal | null;
-    }
-  | { kind: 'resume'; threadId: string; envelope: CallEnvelope }
-  | {
-      kind: 'workflow';
-      envelope: CallEnvelope;
-      mode: 'preview' | 'run';
-      approvalId: string | null;
-    };
+export type BotEvent = {
+  id: number;
+  kind: string;
+  runId: string;
+  [key: string]: unknown;
+};
 
+export type BotView = {
+  id: string;
+  botId: string;
+  version: number;
+  status: string;
+  result: ToolResult | null;
+  pending: ApprovalMaterial | null;
+};
+
+export type WorkflowView = {
+  id: string;
+  definitionId: string;
+  version: number;
+  status: string;
+  nodeId: string | null;
+  dueAt: number | null;
+  approval: Approval | null;
+  result: ToolResult | null;
+  replayable: boolean;
+  history?: unknown[];
+};
+
+export type WorkflowInput = {
+  trigger: { kind: 'manual' | 'schedule' | 'event'; name?: string; key?: string };
+  values?: Record<string, string | number | boolean | null>;
+};
+
+type BotStart = {
+  envelope: CallEnvelope;
+  chat: RunChatInput;
+  proposal: ToolProposal | null;
+};
+
+type ApprovalDecision = { envelope: CallEnvelope; approvalId: string };
+type WorkflowDefinition = { id: string; version: number; nodes: unknown[] };
+type WorkflowTarget = {
+  envelope: CallEnvelope;
+  definitionId: string;
+  version: number;
+  input: WorkflowInput;
+};
+type WorkflowRun = { envelope: CallEnvelope; runId: string };
 type WorkerReply = { result: ToolResult; pending?: ApprovalMaterial };
-type WorkerMessage = WorkerReply | { toolCall: ToolCall } | { error: string };
+
+type Commands = {
+  chat: [BotStart & { threadId: string }, WorkerReply];
+  resume: [ApprovalDecision & { threadId: string }, WorkerReply];
+  'bot-list': [
+    object,
+    {
+      id: string;
+      version: number;
+      allowedTools: string[];
+      maxActions: number;
+      maxSeconds: number;
+    }[],
+  ];
+  'bot-start': [BotStart & { runId: string; botId: string; version: number }, BotView];
+  'bot-resume': [ApprovalDecision & { runId: string }, BotView];
+  'bot-cancel': [WorkflowRun, BotView];
+  workflow: [
+    { envelope: CallEnvelope; mode: 'preview' | 'run'; approvalId: string | null },
+    WorkerReply,
+  ];
+  'workflow-definitions': [{ envelope: CallEnvelope }, WorkflowDefinition[]];
+  'workflow-publish': [
+    { envelope: CallEnvelope; definition: WorkflowDefinition },
+    WorkflowDefinition,
+  ];
+  'workflow-preview': [
+    WorkflowTarget,
+    { nodeId: string; kind: string; tool?: string; input?: unknown }[],
+  ];
+  'workflow-start': [WorkflowTarget & { now: number }, WorkflowView];
+  'workflow-runs': [{ envelope: CallEnvelope; deadOnly: boolean }, WorkflowView[]];
+  'workflow-history': [WorkflowRun, WorkflowView];
+  'workflow-tick': [WorkflowRun & { now: number }, WorkflowView];
+  'workflow-approve': [WorkflowRun & ApprovalDecision & { now: number }, WorkflowView];
+  'workflow-replay': [WorkflowRun & { now: number }, WorkflowView];
+};
+
+export class WorkerRejection extends Error {
+  readonly code: 'not_found' | 'quota_exceeded' | 'invalid_input' | 'conflict';
+
+  constructor(code: WorkerRejection['code']) {
+    super(code);
+    this.code = code;
+  }
+}
+
+type WorkerMessage =
+  | { reply: unknown }
+  | { event: BotEvent }
+  | { toolCall: ToolCall; timeoutMs?: number }
+  | { rejected: WorkerRejection['code'] }
+  | { error: string };
+
+type Controls = { onEvent?: (event: BotEvent) => void; cancelled?: () => boolean };
 const repo = new URL('../../../../', import.meta.url);
 
-export function createWorker(gateway: ToolGateway, python?: string) {
+export function createWorker(
+  gateway: ToolGateway,
+  python?: string,
+  authorize?: (request: ToolCall) => boolean | Promise<boolean>,
+) {
   const interpreter = fileURLToPath(
     new URL(process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python', repo),
   );
@@ -64,25 +155,64 @@ export function createWorker(gateway: ToolGateway, python?: string) {
     return { child, reader: lines[Symbol.asyncIterator](), stop };
   }
 
-  async function execute(command: WorkerCommand): Promise<WorkerReply> {
+  async function dispatch(toolCall: ToolCall, controls: Controls, timeoutMs = 10_000) {
+    const uncertain: ToolResult = {
+      state: 'unknown',
+      actionId: toolCall.envelope.idempotencyKey,
+      message: 'Reconcile the action outcome.',
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    let expired = false;
+    try {
+      return await Promise.race([
+        new Promise<ToolResult>((resolve) => {
+          timer = setTimeout(() => {
+            expired = true;
+            resolve(uncertain);
+          }, timeoutMs);
+        }),
+        (async () => {
+          if (controls.cancelled?.()) return { control: 'cancel' };
+          if (authorize && !(await authorize(toolCall))) {
+            return { state: 'denied', code: 'forbidden', message: 'Execution permission revoked.' };
+          }
+          if (controls.cancelled?.()) return { control: 'cancel' };
+          return expired ? uncertain : await gateway.call(toolCall);
+        })(),
+      ]);
+    } catch {
+      return uncertain;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  async function execute(command: object, controls: Controls): Promise<unknown> {
     if (closed) throw new Error('Fixture worker closed.');
     const { child, reader, stop } = (session ??= start());
-    const timer = setTimeout(stop, 20_000);
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       child.stdin.write(JSON.stringify(command) + '\n');
       for (;;) {
+        timer = setTimeout(stop, 20_000);
         const line = await reader.next();
+        clearTimeout(timer);
         if (line.done) throw new Error('Fixture worker disconnected.');
         const message = JSON.parse(line.value) as WorkerMessage;
+        if ('rejected' in message) throw new WorkerRejection(message.rejected);
         if ('error' in message) throw new Error(message.error);
-        if ('result' in message) return message;
-        const result = await gateway.call(message.toolCall);
-        child.stdin.write(JSON.stringify(result) + '\n');
+        if ('reply' in message) return message.reply;
+        if ('event' in message) controls.onEvent?.(message.event);
+        if ('toolCall' in message) {
+          const result = await dispatch(message.toolCall, controls, message.timeoutMs);
+          child.stdin.write(JSON.stringify(result) + '\n');
+        }
       }
     } catch (error) {
-      // Keep one worker per session. A disconnected worker loses its checkpoints.
-      stop();
-      closed = true;
+      if (!(error instanceof WorkerRejection)) {
+        stop();
+        closed = true;
+      }
       throw error;
     } finally {
       clearTimeout(timer);
@@ -90,8 +220,11 @@ export function createWorker(gateway: ToolGateway, python?: string) {
   }
 
   return {
-    invoke(command: WorkerCommand) {
-      const task = queue.then(() => execute(command));
+    invoke<K extends keyof Commands>(
+      command: Commands[K][0] & { kind: K },
+      controls: Controls = {},
+    ) {
+      const task = queue.then(() => execute(command, controls)) as Promise<Commands[K][1]>;
       queue = task.catch(() => undefined);
       return task;
     },
@@ -101,3 +234,5 @@ export function createWorker(gateway: ToolGateway, python?: string) {
     },
   };
 }
+
+export type Worker = ReturnType<typeof createWorker>;

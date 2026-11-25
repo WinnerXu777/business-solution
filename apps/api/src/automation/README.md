@@ -24,5 +24,9 @@ port 8025. The adapter accepts loopback addresses and fictional recipients.
 
 The fixture API binds to loopback and resolves the two demo actors by endpoint.
 For integration, register `registerAutomation` under `/automation` with the
-governed gateway, a verified identity resolver, and an approval signer.
+governed gateway, a verified identity resolver, an approval signer, and a
+runtime authorization callback.
 Restarting the demo resets its gateway, checkpoints, inbox and run history.
+
+See the [runtime API](../../../../docs/personal-plan/runtime/api.md) for the
+bot run and streaming routes and the workflow definition and run routes.

@@ -20,6 +20,7 @@ import {
   createRouteAudit,
 } from '../../../../packages/adapters/src/llm/index.ts';
 import { createWorker, type ApprovalMaterial } from './worker.ts';
+import { registerRuntimeRoutes, type RuntimeCapability } from './runtime-routes.ts';
 
 type Identity = { tenantId: string; actor: Actor };
 type Options = {
@@ -30,6 +31,10 @@ type Options = {
     approvalId: string,
   ) => Approval | Denied | Promise<Approval | Denied>;
   python?: string;
+  authorizeRuntime?: (
+    scope: CallEnvelope,
+    capability: RuntimeCapability,
+  ) => boolean | Promise<boolean>;
 };
 
 type InboxItem = ApprovalMaterial & {
@@ -80,12 +85,21 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
       return result;
     },
   };
-  const worker = createWorker(gateway, options.python);
+  const authorize =
+    options.authorizeRuntime ??
+    ((_scope: CallEnvelope, capability: RuntimeCapability) =>
+      capability === 'bot' || capability === 'workflow');
+  const worker = createWorker(gateway, options.python, (call) =>
+    authorize(call.envelope, call.envelope.source === 'workflow' ? 'workflow' : 'bot'),
+  );
   app.addHook('onClose', async () => worker.close());
 
   const inbox = new Map<string, InboxItem>();
   const histories = new Map<string, Map<string, Run>>();
-  const chats = new Map<string, { fingerprint: string; reply: ReturnType<typeof worker.invoke> }>();
+  const chats = new Map<
+    string,
+    { fingerprint: string; reply: ReturnType<typeof worker.invoke<'chat'>> }
+  >();
 
   function envelope(identity: Identity, request: FastifyRequest, source: CallEnvelope['source']) {
     const traceId = randomUUID();
@@ -193,6 +207,7 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
             await worker.invoke({
               kind: 'resume',
               threadId,
+              approvalId,
               envelope: { ...decision, idempotencyKey: approvalId + ':approve' },
             })
           ).result,
@@ -215,6 +230,23 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
       route: fixtures.llmRoutes.find((binding) => binding.kind === selected)!,
     };
   }
+
+  const runtime = registerRuntimeRoutes(app, {
+    worker,
+    authorize,
+    scope(request, source, approver) {
+      const identity = options.identity(request, approver ? 'approver' : 'requester');
+      return identity && envelope(identity, request, source);
+    },
+    async sign(scope, approval) {
+      if (approval.tool === 'purchase.order.approve') return;
+      const result = await options.sign(scope, approval.id);
+      if ('code' in result) return result;
+    },
+    addApproval,
+    chatInput,
+    propose: router.propose,
+  });
 
   get<{ orderId: string }>('/orders/:orderId', ({ orderId }, scope) => {
     if (!new RegExp(id.pattern).test(orderId)) return missing;
@@ -364,9 +396,27 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
         if (review.state !== 'ok') return review;
         previews = (review.output as RunWorkflowTemplateOutput).previews;
       }
-      const result = (
-        await worker.invoke({ kind: 'workflow', envelope: scope, mode, approvalId: null })
-      ).result;
+      const runScope = {
+        ...scope,
+        idempotencyKey: digest(['legacy-win-back', scope.idempotencyKey]),
+      };
+      const execution =
+        mode === 'run'
+          ? await worker.invoke({
+              kind: 'workflow-start',
+              envelope: runScope,
+              definitionId: 'win-back-v1',
+              version: 1,
+              input: { trigger: { kind: 'manual' } },
+              now: Date.now(),
+            })
+          : undefined;
+      const result: ToolResult = execution
+        ? execution.approval
+          ? { state: 'pending_approval', approval: execution.approval }
+          : execution.result!
+        : (await worker.invoke({ kind: 'workflow', envelope: scope, mode, approvalId: null }))
+            .result;
       if (result.state === 'ok') {
         const output = result.output as RunWorkflowTemplateOutput;
         history.set(output.runId, {
@@ -388,31 +438,19 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
           approvalId,
         };
         history.set(approvalId, run);
-        addApproval(
-          { approval: result.approval, previews },
-          async () =>
-            (
-              await worker.invoke({
-                kind: 'workflow',
-                envelope: { ...scope, idempotencyKey: approvalId + ':execute' },
-                mode: 'run',
-                approvalId,
-              })
-            ).result,
-          (execution) => {
-            if (execution.state === 'ok') {
-              const output = execution.output as RunWorkflowTemplateOutput;
-              history.set(approvalId, {
-                ...run,
-                id: output.runId,
-                status: output.status,
-                receipts: output.receipts,
-              });
-            } else if (execution.state !== 'pending_approval') {
-              history.set(approvalId, { ...run, status: execution.state });
-            }
-          },
-        );
+        runtime.follow(execution!, runScope, previews, (settlement) => {
+          if (settlement.state === 'ok') {
+            const output = settlement.output as RunWorkflowTemplateOutput;
+            history.set(approvalId, {
+              ...run,
+              id: output.runId,
+              status: output.status,
+              receipts: output.receipts,
+            });
+          } else if (settlement.state !== 'pending_approval') {
+            history.set(approvalId, { ...run, status: settlement.state });
+          }
+        });
       }
       return result;
     },
