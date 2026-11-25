@@ -1,0 +1,18 @@
+# Rivetquay workflow templates
+
+Each template ships with synthetic preview values. Use the preview route to review the plan and resolved parameters. Install creates a draft definition. Publish the version and release it, then register the proposed trigger with the required input values. For event templates, the producer supplies recordId and, where needed, recipientId. For scheduled account summaries, the host supplies approved fact text through the schedule's values.
+
+| Template ID             | Trigger or schedule                              | Parameters                        | Fixture and planned result                                                                                                |
+| ----------------------- | ------------------------------------------------ | --------------------------------- | ------------------------------------------------------------------------------------------------------------------------- |
+| win-back                | customer.inactive                                | days defaults to 90, message copy | cust-008 produces an email proposal subject to marketing consent and approval.                                            |
+| overdue-invoice         | invoice.overdue                                  | days defaults to 7                | inv-001 and cust-002 produce a governed collections preview. Dispatch rechecks the invoice and customer.                  |
+| reorder-alert           | stock.below_reorder                              | title, dueDays defaults to 1      | sku-001 assigns a purchasing task.                                                                                        |
+| customer-onboarding     | customer.created                                 | message copy                      | cust-009 produces a welcome email proposal.                                                                               |
+| quote-follow-up         | quote.follow_up_due                              | message copy                      | quote-fixture-001 and cust-008 produce a follow-up email proposal.                                                        |
+| back-in-stock           | stock.restocked                                  | message copy                      | sku-001 and cust-008 produce a marketing email proposal for consent review.                                               |
+| large-order-hold        | order.large                                      | title, dueDays defaults to 1      | ord-004 requests approval for an order hold and then assigns a risk review.                                               |
+| monthly-account-summary | First day of each month at 09:00 America/Toronto | model defaults to fixture-chat    | Synthetic account facts for cust-008 produce an untrusted draft to review.                                                |
+| vendor-late-delivery    | vendor.delivery_late                             | title, dueDays defaults to 1      | po-fixture-002 assigns purchasing follow-up.                                                                              |
+| failed-payment-retry    | payment.retry_scheduled                          | message copy                      | A synthetic retry associated with inv-001 and cust-002 produces a notice proposal. The workflow has no payment operation. |
+
+A template's fixture demonstrates inputs and planned nodes. The real producer determines which records qualify. Delivery requires current record and recipient checks, consent where applicable, and an exact-material approval. See the [API and adapter requirements](api.md).

@@ -1,0 +1,738 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Workflow builder definition",
+  "type": "object",
+  "properties": {
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 2147483647
+    },
+    "inputs": {
+      "type": "object",
+      "propertyNames": {
+        "$ref": "#/$defs/id"
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/valueType"
+      },
+      "maxProperties": 32
+    },
+    "nodes": {
+      "type": "array",
+      "items": {
+        "oneOf": [
+          {
+            "$ref": "#/$defs/trigger"
+          },
+          {
+            "$ref": "#/$defs/mapping"
+          },
+          {
+            "$ref": "#/$defs/branch"
+          },
+          {
+            "$ref": "#/$defs/switch"
+          },
+          {
+            "$ref": "#/$defs/loop"
+          },
+          {
+            "$ref": "#/$defs/loop-end"
+          },
+          {
+            "$ref": "#/$defs/delay"
+          },
+          {
+            "$ref": "#/$defs/checkpoint"
+          },
+          {
+            "$ref": "#/$defs/wait-for-event"
+          },
+          {
+            "$ref": "#/$defs/ab-split"
+          },
+          {
+            "$ref": "#/$defs/throttle"
+          },
+          {
+            "$ref": "#/$defs/human-task"
+          },
+          {
+            "$ref": "#/$defs/llm-draft"
+          },
+          {
+            "$ref": "#/$defs/message"
+          },
+          {
+            "$ref": "#/$defs/create-record"
+          },
+          {
+            "$ref": "#/$defs/update-record"
+          },
+          {
+            "$ref": "#/$defs/http"
+          }
+        ]
+      },
+      "minItems": 2,
+      "maxItems": 40
+    }
+  },
+  "required": ["id", "version", "inputs", "nodes"],
+  "additionalProperties": false,
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,127}$"
+    },
+    "scalar": {
+      "anyOf": [
+        {
+          "type": "string",
+          "minLength": 0,
+          "maxLength": 4000
+        },
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "value": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/scalar"
+        },
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 0,
+            "maxLength": 4000
+          },
+          "minItems": 0,
+          "maxItems": 50
+        },
+        {
+          "type": "object",
+          "properties": {
+            "ref": {
+              "$ref": "#/$defs/id"
+            }
+          },
+          "required": ["ref"],
+          "additionalProperties": false
+        }
+      ]
+    },
+    "valueType": {
+      "enum": ["string", "integer", "boolean", "null", "string-list", "draft"]
+    },
+    "trigger": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "trigger"
+        },
+        "trigger": {
+          "enum": ["manual", "schedule", "event", "webhook"]
+        },
+        "next": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["id", "kind", "trigger", "next"],
+      "additionalProperties": false
+    },
+    "mapping": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "mapping"
+        },
+        "values": {
+          "type": "object",
+          "propertyNames": {
+            "$ref": "#/$defs/id"
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/value"
+          },
+          "maxProperties": 32
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "values", "next"],
+      "additionalProperties": false
+    },
+    "branch": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "branch"
+        },
+        "left": {
+          "$ref": "#/$defs/value"
+        },
+        "equals": {
+          "$ref": "#/$defs/scalar"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "otherwise": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "left", "equals", "next", "otherwise"],
+      "additionalProperties": false
+    },
+    "switch": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "switch"
+        },
+        "value": {
+          "$ref": "#/$defs/value"
+        },
+        "cases": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "equals": {
+                "$ref": "#/$defs/scalar"
+              },
+              "next": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/id"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["equals", "next"],
+            "additionalProperties": false
+          },
+          "minItems": 1,
+          "maxItems": 12
+        },
+        "otherwise": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "value", "cases", "otherwise"],
+      "additionalProperties": false
+    },
+    "loop": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "loop"
+        },
+        "items": {
+          "$ref": "#/$defs/value"
+        },
+        "item": {
+          "$ref": "#/$defs/id"
+        },
+        "maxItems": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "body": {
+          "$ref": "#/$defs/id"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "items", "item", "maxItems", "body", "next"],
+      "additionalProperties": false
+    },
+    "loop-end": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "loop-end"
+        },
+        "loop": {
+          "$ref": "#/$defs/id"
+        }
+      },
+      "required": ["id", "kind", "loop"],
+      "additionalProperties": false
+    },
+    "delay": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "delay"
+        },
+        "milliseconds": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800000
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "milliseconds", "next"],
+      "additionalProperties": false
+    },
+    "checkpoint": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "checkpoint"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "next"],
+      "additionalProperties": false
+    },
+    "wait-for-event": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "wait-for-event"
+        },
+        "event": {
+          "$ref": "#/$defs/id"
+        },
+        "key": {
+          "$ref": "#/$defs/value"
+        },
+        "timeoutMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800000
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "onTimeout": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "event", "key", "timeoutMs", "next", "onTimeout"],
+      "additionalProperties": false
+    },
+    "ab-split": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "ab-split"
+        },
+        "key": {
+          "$ref": "#/$defs/value"
+        },
+        "aPercent": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "otherwise": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "key", "aPercent", "next", "otherwise"],
+      "additionalProperties": false
+    },
+    "throttle": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "throttle"
+        },
+        "bucket": {
+          "$ref": "#/$defs/id"
+        },
+        "limit": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 1000
+        },
+        "windowMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800000
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "bucket", "limit", "windowMs", "next"],
+      "additionalProperties": false
+    },
+    "human-task": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "human-task"
+        },
+        "role": {
+          "enum": [
+            "operator",
+            "approver",
+            "admin",
+            "purchasing",
+            "finance",
+            "sales",
+            "risk",
+            "operations"
+          ]
+        },
+        "title": {
+          "$ref": "#/$defs/value"
+        },
+        "dueMs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 604800000
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "onTimeout": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "role", "title", "dueMs", "next", "onTimeout"],
+      "additionalProperties": false
+    },
+    "llm-draft": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "llm-draft"
+        },
+        "model": {
+          "$ref": "#/$defs/id"
+        },
+        "prompt": {
+          "$ref": "#/$defs/value"
+        },
+        "output": {
+          "$ref": "#/$defs/id"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "model", "prompt", "output", "next"],
+      "additionalProperties": false
+    },
+    "message": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "message"
+        },
+        "channel": {
+          "enum": ["email", "sms", "voice"]
+        },
+        "purpose": {
+          "enum": ["marketing", "transactional", "collections"]
+        },
+        "recipientId": {
+          "$ref": "#/$defs/value"
+        },
+        "sourceId": {
+          "$ref": "#/$defs/value"
+        },
+        "body": {
+          "$ref": "#/$defs/value"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "channel", "purpose", "recipientId", "sourceId", "next"],
+      "additionalProperties": false
+    },
+    "create-record": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "create-record"
+        },
+        "recordType": {
+          "enum": ["activity", "case", "order-hold"]
+        },
+        "subjectId": {
+          "$ref": "#/$defs/value"
+        },
+        "summary": {
+          "$ref": "#/$defs/value"
+        },
+        "output": {
+          "$ref": "#/$defs/id"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "recordType", "subjectId", "summary", "output", "next"],
+      "additionalProperties": false
+    },
+    "update-record": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "update-record"
+        },
+        "recordType": {
+          "enum": ["activity", "case", "order-hold"]
+        },
+        "recordId": {
+          "$ref": "#/$defs/value"
+        },
+        "summary": {
+          "$ref": "#/$defs/value"
+        },
+        "output": {
+          "$ref": "#/$defs/id"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "recordType", "recordId", "summary", "output", "next"],
+      "additionalProperties": false
+    },
+    "http": {
+      "type": "object",
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "kind": {
+          "const": "http"
+        },
+        "connector": {
+          "$ref": "#/$defs/id"
+        },
+        "operation": {
+          "$ref": "#/$defs/id"
+        },
+        "recordId": {
+          "$ref": "#/$defs/value"
+        },
+        "output": {
+          "$ref": "#/$defs/id"
+        },
+        "next": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "kind", "connector", "operation", "recordId", "output", "next"],
+      "additionalProperties": false
+    }
+  }
+}
