@@ -35,10 +35,16 @@ export { EntitlementStore, ModuleCatalog } from './entitlements.ts';
 export { PlatformGateway, type PlatformApproval } from './gateway.ts';
 export {
   fixtureAdmin,
+  nativeTenantRegion,
   TenantDirectory,
   type PlatformIdentity,
   type PlatformRole,
+  type TenantInput,
 } from './identity.ts';
+export { PlatformAuth, type PlatformAuthOptions } from './auth.ts';
+export { PlatformSessions } from './sessions.ts';
+export { OidcRelyingParty, type OidcHttpClient } from './oidc.ts';
+export { permissions, type Permission } from './permissions.ts';
 export {
   capabilities,
   CapabilityBindingStore,
@@ -135,12 +141,13 @@ export function createPlatformServices(options: PlatformOptions = {}) {
     now,
     options.persistence,
   );
-  const directory = new TenantDirectory(fixtures);
+  const directory = new TenantDirectory(fixtures, now);
   const entitlements = new EntitlementStore(
     fixtures.entitlements,
     repo('entitlements', options.repositories?.entitlements),
     audit,
     now,
+    (tenantId) => directory.initialPlan(tenantId),
   );
   const providers = new ProviderRegistry();
   const vault = new CredentialVault(
@@ -165,6 +172,7 @@ export function createPlatformServices(options: PlatformOptions = {}) {
       ...options.billing,
       providerPrices: [fixtureByoPrice, ...(options.billing?.providerPrices ?? [])],
     },
+    (tenantId) => directory.initialPlan(tenantId),
   );
   const bindings = new CapabilityBindingStore(
     providers,

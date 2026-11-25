@@ -1,4 +1,5 @@
 import { PlatformAudit, PlatformError, type MutationContext } from './audit.ts';
+import { nativeTenantRegion } from './identity.ts';
 import type { TenantRepository } from './repository.ts';
 import { vaultRefPattern, type CredentialAccessor, type CredentialVault } from './vault.ts';
 
@@ -23,7 +24,7 @@ export type Capability = keyof typeof labels;
 export const capabilities = Object.keys(labels) as Capability[];
 export type ProviderMode = 'native' | 'byo' | 'premium';
 export type DataClass = 'synthetic' | 'business-records' | 'contact-data' | 'voice-recording';
-const canada = 'ca-central-1';
+const canada = nativeTenantRegion;
 const canadaRegions = new Set([canada, 'ca-west-1', 'canadacentral', 'canadaeast']);
 const allData: DataClass[] = ['synthetic', 'business-records', 'contact-data', 'voice-recording'];
 

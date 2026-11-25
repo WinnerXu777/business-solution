@@ -13,11 +13,19 @@ import { rateableGatewayUsage } from './billing-gateway.ts';
 import type { BillingLedger } from './billing.ts';
 import type { EntitlementStore } from './entitlements.ts';
 import type { TenantDirectory } from './identity.ts';
+import { mayDecideApproval } from './permissions.ts';
 import { PlatformQueue } from './repository.ts';
 
 export type PlatformApproval = Omit<Approval, 'state'> & {
   state: Exclude<Approval['state'], 'denied'> | 'rejected' | 'expired';
 };
+
+interface MaterialPreview {
+  requestId: string;
+  vendorId: string;
+  currency: 'CAD';
+  lineCount: number;
+}
 
 function deny(code: Denied['code']): Denied {
   return { state: 'denied', code, message: code.replaceAll('_', ' ') };
@@ -42,6 +50,7 @@ export class PlatformGateway {
   private readonly queue = new PlatformQueue();
   private readonly seen = new Set<string>();
   private readonly grants = new Map<string, PlatformApproval>();
+  private readonly previews = new Map<string, MaterialPreview>();
 
   constructor(
     gateway: PlatformGateway['gateway'],
@@ -105,25 +114,33 @@ export class PlatformGateway {
 
   private async execute(request: ToolCall): Promise<ToolResult> {
     const { envelope, tool, input } = request;
-    const role = this.directory.resolve(envelope)?.role;
-    const allowed =
+    const permission =
       tool === 'purchase.order.approve'
-        ? role === 'approver'
-        : role !== undefined && role !== 'admin' && (tool.endsWith('.read') || role === 'operator');
+        ? 'approvals.decide'
+        : tool.endsWith('.read')
+          ? 'records.read'
+          : 'actions.request';
+    if (!this.directory.allows(envelope, permission)) {
+      await this.auditSink.record(envelope, tool, 'denied');
+      return deny('forbidden');
+    }
     const key = requestKey(request);
     const disabled =
-      allowed &&
       !this.seen.has(key) &&
       (await this.entitlements.override(envelope.tenantId, toolModules[tool])) === false;
     const approvalId = 'approvalId' in input ? input.approvalId : null;
     const grant = approvalId ? this.grant(envelope.tenantId, approvalId) : undefined;
-    if (allowed && (disabled || grant?.state === 'rejected')) {
+    const invalidApproval =
+      grant &&
+      (grant.state === 'rejected' ||
+        (permission === 'approvals.decide' && !mayDecideApproval(true, envelope.actor.id, grant)));
+    if (disabled || invalidApproval) {
       await this.auditSink.record(envelope, tool, 'denied');
       return deny(disabled ? 'module_disabled' : 'invalid_approval');
     }
 
     const result = await this.gateway.call(request);
-    if (allowed) this.seen.add(key);
+    this.seen.add(key);
     const prepared =
       result.state === 'pending_approval'
         ? result.approval
@@ -136,10 +153,14 @@ export class PlatformGateway {
         return deny('invalid_approval');
       }
       this.remember(prepared);
+      if (result.state === 'ok' && 'draft' in result.output && 'approval' in result.output) {
+        const { requestId, vendorId, currency, lines } = result.output.draft;
+        this.previews.set(prepared.id, { requestId, vendorId, currency, lineCount: lines.length });
+      }
     }
     const uncertainConsumption =
       result.state === 'unknown' && this.audit().at(-1)?.actionId === result.actionId;
-    if (this.billing && allowed && result.state === 'ok') {
+    if (this.billing && result.state === 'ok') {
       const audit = this.audit().findLast(
         (entry) =>
           entry.tenantId === envelope.tenantId &&
@@ -166,7 +187,11 @@ export class PlatformGateway {
     return [...this.grants.values()]
       .filter((grant) => grant.tenantId === tenantId)
       .map((grant) => this.effective(grant))
-      .filter((grant) => state === undefined || grant.state === state);
+      .filter((grant) => state === undefined || grant.state === state)
+      .map((grant) => {
+        const materialPreview = this.previews.get(grant.id);
+        return materialPreview ? { ...grant, materialPreview: { ...materialPreview } } : grant;
+      });
   }
 
   sign(context: MutationContext, id: string) {
@@ -208,13 +233,13 @@ export class PlatformGateway {
 
   private async signThroughGovernance(envelope: CallEnvelope, id: string) {
     const grant = this.grant(envelope.tenantId, id);
-    if (
-      grant &&
-      this.directory.resolve(envelope)?.role === 'approver' &&
-      grant.approverId === envelope.actor.id
-    ) {
+    if (!this.directory.allows(envelope, 'approvals.decide')) {
+      await this.auditSink.record(envelope, 'approval.sign', 'denied');
+      return deny('forbidden');
+    }
+    if (grant) {
       const blocked =
-        grant.state === 'rejected'
+        grant.state === 'rejected' || !mayDecideApproval(true, envelope.actor.id, grant)
           ? 'invalid_approval'
           : (await this.entitlements.override(envelope.tenantId, toolModules[grant.tool])) === false
             ? 'module_disabled'
@@ -240,17 +265,15 @@ export class PlatformGateway {
   }
 
   private async pendingFor(context: MutationContext, id: string, operation: 'sign' | 'reject') {
-    const role = this.directory.resolve(context)?.role;
+    const allowed = this.directory.allows(context, 'approvals.decide');
     const grant = this.grant(context.tenantId, id);
     if (
-      role !== 'approver' ||
       !grant ||
       this.effective(grant).state !== 'pending' ||
-      grant.approverId !== context.actor.id ||
-      grant.requestedBy === context.actor.id
+      !mayDecideApproval(allowed, context.actor.id, grant)
     ) {
       await this.auditSink.record(context, 'approval.' + operation, 'denied');
-      throw new PlatformError(role === 'approver' ? 'invalid_approval' : 'forbidden');
+      throw new PlatformError(allowed ? 'invalid_approval' : 'forbidden');
     }
     return grant;
   }

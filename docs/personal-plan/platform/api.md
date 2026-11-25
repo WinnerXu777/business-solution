@@ -1,6 +1,50 @@
-# Platform billing and credential API
+# Platform API
 
 These routes extend the authenticated [platform OpenAPI document](../../../apps/api/src/platform/openapi.json). The server derives the tenant and actor from the verified bearer identity. Every response sets `Cache-Control: no-store`. Cross-tenant and missing resource lookups return the same 404.
+
+## Login and session lifecycle
+
+| Method and path under `/platform/v1`           | Behavior                                                                                                                                                                                                                                                                                |
+| ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /auth/login?tenantId={id}`                | Returns `{authorizeUrl}` and sets a five-minute Secure, HttpOnly, SameSite=Lax cookie. The browser follows the returned URL. Pass `stepUp=true` to request fresh MFA.                                                                                                                   |
+| `GET /auth/callback?code={code}&state={state}` | Exchanges the code using S256 PKCE. The browser correlation cookie is required. Returns `status: "authenticated"` with session tokens for an existing membership, or `status: "enrollment_required"` with a five-minute `enrollmentToken` for a verified email in the requested tenant. |
+| `POST /auth/refresh`                           | Accepts `{refreshToken}`, rotates it, and returns a new access token. An invalid, expired, or superseded refresh token returns 403.                                                                                                                                                     |
+| `POST /auth/logout`                            | Accepts `{refreshToken}` and revokes the session family. The response includes `logoutUrl` when discovery advertises an issuer logout endpoint. The browser can visit that URL to request issuer logout.                                                                                |
+
+Session responses include `accessToken`, `refreshToken`, `expiresAt`, and `refreshExpiresAt`. Send access tokens as bearer credentials. Access tokens last five minutes. Refresh tokens have an absolute eight-hour lifetime. A role change, membership removal, or tenant suspension invalidates both. Resuming a tenant requires a new login. Logout revokes every access token in that session family.
+
+## Membership and tenant lifecycle
+
+| Method and path under `/platform/v1` | Behavior                                                                                                                                                                                       |
+| ------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /members`                       | Returns memberships for the verified tenant. Member IDs are stable actor IDs, and the version changes when the assigned role changes.                                                          |
+| `POST /invites`                      | Requires member management. Accepts `{email, roleId}` and returns 201 with a one-time token and its 24-hour expiry.                                                                            |
+| `POST /invites/{token}/accept`       | Accepts `{enrollmentToken}` from callback. Redeems a matching tenant invitation and returns session tokens. The ID token's verified email must match the invitation.                           |
+| `PATCH /members/{id}/role`           | Requires member management. Accepts `{roleId}` and returns the updated membership.                                                                                                             |
+| `DELETE /members/{id}`               | Requires member management. Removes the membership and returns 204.                                                                                                                            |
+| `GET /roles`                         | Lists built-in and custom roles with their named permissions.                                                                                                                                  |
+| `POST /roles`                        | Requires role management. Accepts `{id, name, permissions}` and returns the tenant-local custom role with status 201.                                                                          |
+| `POST /tenants`                      | Platform operator only. Accepts `{name, region, plan, adminEmail}` and returns 201 with `{tenant, adminInvite}`. The region is `ca-central-1`, and the plan uses the billing plan input shape. |
+| `POST /tenants/{id}/suspend`         | Platform operator only. Suspends tenant access and returns the updated tenant.                                                                                                                 |
+| `POST /tenants/{id}/resume`          | Platform operator only. Restores tenant access and returns the updated tenant.                                                                                                                 |
+
+Reader, operator, approver, and admin roles can read platform, record, member, and role information. Operator can request actions, approver can decide designated approvals, and admin manages members, roles, platform settings, and export requests. A requester cannot approve their own request, including with a custom role that grants both permissions. Custom administrative roles can delegate permissions they already hold. Only a built-in admin can assign the built-in admin role, and an active tenant must retain its last built-in admin.
+
+Protected administrative writes and tenant lifecycle writes require MFA within ten minutes by default. The relying party recognizes a signed `amr` containing `mfa` or an explicitly configured `acr` value, along with `auth_time`. A step-up request requires the provider to authenticate again. Refresh preserves the original MFA time. Hosts can set `requireStepUp: false` for synthetic deployments.
+
+Provisioning selects native bindings in Canada Central. Records start enabled, and selected plan add-ons enable corresponding procurement, collections, workflows, insights, and AI modules. Enabled modules start with a fixture allowance of 40 actions per UTC month. The trusted `directory.requestExport(identity)` operation records a tenant-scoped request, which `directory.exportRequests(identity)` can list.
+
+`GET /approvals` may include `materialPreview`. For purchase order drafts it exposes the internal requisition and vendor IDs, currency, and line count from the bound draft. Other approval types omit the preview until their governed material is available as an allowlisted projection.
+
+## Host wiring
+
+Create one `PlatformAuth` using the platform services' directory, the OIDC configuration, and a host-managed signing key of at least 32 bytes. Register `platformRoutes` with `{services, auth}`. Pass `createPlatformSessionIdentityVerifier(auth)` to the governed REST/MCP routes and use `services.gateway` there to apply current platform permissions. A fixture-only registration can still use `{services, verifyIdentity}` with the fixture verifier.
+
+Configure the Dex issuer, client ID, optionally its client secret, and the exact callback URI. The injected HTTP client supplies decoded JSON for discovery, token exchange, and JWKS. Configure it with bounded timeouts and disable redirects. Discovery endpoints are restricted to the issuer origin. ID tokens use RS256. For an existing synthetic user, call `directory.linkUser(actorId, issuer, subject)` at startup. Set `platformOperators` to vetted issuer and subject pairs with a membership in an active tenant.
+
+Identity and lifecycle state are process-local in this milestone. Restarting clears grants created at runtime, invitations, export requests, and sessions. The host should omit authorization headers, cookies, token request and response bodies, callback query strings, and invitation path tokens from request logs. The governance gateway still uses fixture grants and records. Dynamic tenant tool execution requires the governance integration.
+
+## Billing and credentials
 
 | Method and path under `/platform/v1`   | Behavior                                                                                                                                                              |
 | -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
