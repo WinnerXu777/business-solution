@@ -1,3 +1,17 @@
+import { HttpAutomationClient } from './clients/automation.ts';
+import type { AutomationClient } from './clients/automation.ts';
+import { HttpRecordsClient, HttpInsightsClient } from './clients/records.ts';
+import type { RecordsClient, InsightsClient } from './clients/records.ts';
+import {
+  HttpBillingClient,
+  HttpCredentialsClient,
+  HttpConnectorsClient,
+} from './clients/administration.ts';
+import type {
+  BillingClient,
+  CredentialsClient,
+  ConnectorsClient,
+} from './clients/administration.ts';
 import type {
   Actor,
   Approval,
@@ -111,7 +125,10 @@ export interface UsagePage {
 
 export type ApprovalState = Exclude<Approval['state'], 'denied'> | 'rejected' | 'expired';
 // Older grants can still carry the shared contract's denied state.
-export type PlatformApproval = Omit<Approval, 'state'> & { state: ApprovalState | 'denied' };
+export type PlatformApproval = Omit<Approval, 'state'> & {
+  state: ApprovalState | 'denied';
+  materialPreview?: unknown;
+};
 
 export interface NewConnection {
   kind: 'api_client' | 'mcp_client';
@@ -138,9 +155,7 @@ export interface PlatformHealth {
   version: string;
 }
 
-export type PlatformDenialCode =
-  | Exclude<Denied['code'], 'suppressed'>
-  | Extract<Failed['code'], 'unavailable'>;
+export type PlatformDenialCode = Denied['code'] | Failed['code'] | 'unknown';
 export const denialMessages = {
   forbidden: 'You don’t have permission to do this.',
   not_found: 'This item could not be found.',
@@ -148,6 +163,10 @@ export const denialMessages = {
   quota_exceeded: 'The allowance for this module has been reached.',
   invalid_approval: 'This approval is no longer valid for this action.',
   idempotency_conflict: 'A conflicting request has already been recorded.',
+  suppressed: 'Outreach is suppressed for this record.',
+  invalid_input: 'Check the input and try again.',
+  provider_error: 'The configured provider could not complete the action.',
+  unknown: 'Reconcile the outcome before trying again.',
   unavailable: 'The platform is unavailable. Try again shortly.',
 } satisfies Record<PlatformDenialCode, string>;
 
@@ -161,6 +180,12 @@ export class PlatformError extends Error {
 }
 
 export interface PlatformClient {
+  readonly automation: AutomationClient;
+  readonly records: RecordsClient;
+  readonly insights: InsightsClient;
+  readonly billing: BillingClient;
+  readonly credentials: CredentialsClient;
+  readonly connectors: ConnectorsClient;
   getMe(): Promise<PlatformIdentity>;
   getWorkspaces(): Promise<Workspace[]>;
   getWorkspace(id: string): Promise<Workspace>;
@@ -196,6 +221,21 @@ function queryString(params: Record<string, string | number | undefined>) {
   return search.size ? '?' + search : '';
 }
 
+export type RequestJson = <T>(
+  path: string,
+  method?: string,
+  body?: unknown,
+  headers?: Record<string, string>,
+  expectJson?: boolean,
+) => Promise<T>;
+
+export function unwrapTool(result: { state: string; output?: unknown; code?: string }): unknown {
+  if (result.state === 'ok') return result.output;
+  if (result.state === 'unknown') throw new PlatformError('unknown');
+  if (result.state === 'pending_approval') throw new PlatformError('invalid_approval');
+  throw new PlatformError(responseDenial(result, 200) ?? 'unavailable');
+}
+
 function responseDenial(body: unknown, status: number): PlatformDenialCode | undefined {
   if (typeof body === 'object' && body !== null && 'code' in body) {
     const code = body.code;
@@ -203,6 +243,8 @@ function responseDenial(body: unknown, status: number): PlatformDenialCode | und
       return code as PlatformDenialCode;
     }
   }
+  if (status === 400) return 'invalid_input';
+  if (status === 409) return 'idempotency_conflict';
   if (status === 401 || status === 403) return 'forbidden';
   if (status === 404) return 'not_found';
   if (status === 429) return 'quota_exceeded';
@@ -210,6 +252,12 @@ function responseDenial(body: unknown, status: number): PlatformDenialCode | und
 }
 
 export class HttpPlatformClient implements PlatformClient {
+  readonly automation: AutomationClient;
+  readonly records: RecordsClient;
+  readonly insights: InsightsClient;
+  readonly billing: BillingClient;
+  readonly credentials: CredentialsClient;
+  readonly connectors: ConnectorsClient;
   private readonly root: string;
   private readonly token: string;
   private readonly fetcher: typeof fetch;
@@ -219,37 +267,64 @@ export class HttpPlatformClient implements PlatformClient {
     token,
     fetch: fetcher = globalThis.fetch.bind(globalThis),
   }: HttpPlatformClientOptions) {
-    this.root = baseUrl.replace(/\/+$/, '') + '/platform/v1';
+    this.root = baseUrl.replace(/\/+$/, '');
     this.token = token;
     this.fetcher = fetcher;
+    const request = this.requestJson.bind(this);
+    const records = new HttpRecordsClient(request, () => this.getMe());
+    this.records = records;
+    this.insights = new HttpInsightsClient(records);
+    this.automation = new HttpAutomationClient(request, async (path, init) => {
+      const response = await this.fetch(path, init);
+      if (!response.ok) {
+        const payload = await response.json().catch(() => undefined);
+        throw new PlatformError(responseDenial(payload, response.status) ?? 'unavailable');
+      }
+      return response;
+    });
+    this.billing = new HttpBillingClient(request);
+    this.credentials = new HttpCredentialsClient(request);
+    this.connectors = new HttpConnectorsClient(request);
   }
 
-  private async request<T>(
+  private async fetch(path: string, init: RequestInit) {
+    try {
+      return await this.fetcher(this.root + path, {
+        ...init,
+        headers: { ...init.headers, Authorization: 'Bearer ' + this.token },
+      });
+    } catch {
+      if (init.signal?.aborted) throw init.signal.reason;
+      throw new PlatformError('unavailable');
+    }
+  }
+
+  private async requestJson<T>(
     path: string,
     method = 'GET',
     body?: unknown,
+    headers?: Record<string, string>,
     expectJson = true,
   ): Promise<T> {
-    let response: Response;
-    try {
-      response = await this.fetcher(this.root + path, {
-        method,
-        headers: {
-          Accept: 'application/json',
-          Authorization: 'Bearer ' + this.token,
-          ...(body !== undefined && { 'Content-Type': 'application/json' }),
-        },
-        ...(body !== undefined && { body: JSON.stringify(body) }),
-      });
-    } catch {
-      throw new PlatformError('unavailable');
-    }
+    const response = await this.fetch(path, {
+      method,
+      headers: {
+        Accept: 'application/json',
+        ...(body !== undefined && { 'Content-Type': 'application/json' }),
+        ...headers,
+      },
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+    });
     const payload: unknown = await response.json().catch(() => undefined);
     const denial = responseDenial(payload, response.status);
     if (denial || !response.ok || (expectJson && payload === undefined)) {
       throw new PlatformError(denial ?? 'unavailable');
     }
     return (expectJson ? payload : undefined) as T;
+  }
+
+  private request<T>(path: string, method?: string, body?: unknown, expectJson = true) {
+    return this.requestJson<T>('/platform/v1' + path, method, body, undefined, expectJson);
   }
 
   getMe() {
@@ -342,4 +417,12 @@ export function canDecideApproval(me: PlatformIdentity, approval: PlatformApprov
     me.tenant.id === approval.tenantId &&
     approval.state === 'pending'
   );
+}
+
+export function canOperate(role: PlatformRole) {
+  return role === 'admin' || role === 'operator';
+}
+
+export function canReview(role: PlatformRole) {
+  return role === 'admin' || role === 'approver';
 }

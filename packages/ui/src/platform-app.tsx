@@ -1,30 +1,28 @@
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import type { ComponentType } from 'react';
 import { createPortal } from 'react-dom';
-import {
-  Badge,
-  Card,
-  EmptyState,
-  Field,
-  Select,
-  StatusPill,
-  Switch,
-  Table,
-  Toast,
-} from './components.tsx';
+import { Badge, Card, EmptyState, Field, Select, Switch, Toast } from './components.tsx';
 import { RemoteContent, useAction, useResource } from './data.tsx';
 import type { Notice } from './data.tsx';
 import { PlatformError } from './platform-client.ts';
-import type {
-  PlatformClient,
-  PlatformIdentity,
-  RegistryEntry,
-  Workspace,
-} from './platform-client.ts';
+import type { PlatformClient, PlatformIdentity, Workspace } from './platform-client.ts';
 import { ApprovalsScreen } from './screens/approvals.tsx';
 import { ConnectionsScreen } from './screens/connections.tsx';
 import { ProvidersScreen } from './screens/providers.tsx';
-import { AuditScreen, ModulesScreen, OverviewScreen, UsageScreen } from './screens/reporting.tsx';
+import { AuditScreen, OverviewScreen, UsageScreen } from './screens/reporting.tsx';
+import { BotsScreen } from './screens/bots.tsx';
+import {
+  WorkflowsScreen,
+  WorkflowRunsScreen,
+  WorkflowHistoryScreen,
+} from './screens/workflows.tsx';
+import { ErpScreen, CrmScreen } from './screens/records.tsx';
+import { InsightsScreen } from './screens/insights.tsx';
+import {
+  ConnectorsScreen,
+  CredentialsScreen,
+  ModulesAndBillingScreen,
+} from './screens/administration.tsx';
 import './styles.css';
 
 type Theme = 'light' | 'dark';
@@ -72,68 +70,71 @@ function subscribePath(callback: () => void) {
   return () => window.removeEventListener('hashchange', callback);
 }
 
-function RegistryPlaceholder({
-  client,
-  type,
-}: PlatformRouteContext & { type: 'bots' | 'workflows' }) {
-  const resource = useResource(
-    useCallback(() => (type === 'bots' ? client.getBots() : client.getWorkflows()), [type, client]),
-  );
-  return (
-    <Card title={type === 'bots' ? 'Bot registry' : 'Workflow registry'}>
-      <p className="bs-muted">The editor and runtime screens will appear here once connected.</p>
-      <RemoteContent resource={resource} label={type}>
-        {(rows) => (
-          <Table<RegistryEntry>
-            label={type + ' registry'}
-            rows={rows}
-            rowKey={(row) => row.id}
-            columns={[
-              { key: 'name', title: 'Name', render: (row) => row.name },
-              { key: 'kind', title: 'Kind', render: (row) => row.kind },
-              { key: 'module', title: 'Module', render: (row) => row.module },
-              {
-                key: 'status',
-                title: 'Status',
-                render: (row) => <StatusPill status={row.status} />,
-              },
-            ]}
-          />
-        )}
-      </RemoteContent>
-    </Card>
-  );
-}
-
-function Placeholder() {
-  return <EmptyState title="This screen is awaiting integration." />;
+function SettingsRoute() {
+  return null;
 }
 
 const baseRoutes: readonly PlatformRoute[] = [
   { path: '/', title: 'Overview', component: OverviewScreen },
   { path: '/approvals', title: 'Approvals', component: ApprovalsScreen },
-  {
-    path: '/bots',
-    title: 'Bots',
-    component: (props) => <RegistryPlaceholder {...props} type="bots" />,
-  },
-  {
-    path: '/workflows',
-    title: 'Workflows',
-    component: (props) => <RegistryPlaceholder {...props} type="workflows" />,
-  },
-  { path: '/erp', title: 'ERP', component: Placeholder },
-  { path: '/crm', title: 'CRM', component: Placeholder },
-  { path: '/insights', title: 'Insights', component: Placeholder },
+  { path: '/bots', title: 'Bots', component: BotsScreen },
+  { path: '/workflows', title: 'Workflows', component: WorkflowsScreen },
+  { path: '/erp', title: 'ERP', component: ErpScreen },
+  { path: '/crm', title: 'CRM', component: CrmScreen },
+  { path: '/insights', title: 'Insights', component: InsightsScreen },
+  { path: '/connectors', title: 'Connectors', component: ConnectorsScreen },
   { path: '/providers', title: 'Providers', component: ProvidersScreen },
-  { path: '/modules', title: 'Modules and billing', component: ModulesScreen },
+  { path: '/credentials', title: 'Credentials', component: CredentialsScreen },
+  { path: '/modules', title: 'Modules and billing', component: ModulesAndBillingScreen },
   { path: '/connections', title: 'Connections', component: ConnectionsScreen },
   { path: '/audit', title: 'Audit log', component: AuditScreen },
   { path: '/usage', title: 'Usage', component: UsageScreen },
-  { path: '/settings', title: 'Settings', component: Placeholder },
+  { path: '/settings', title: 'Settings', component: SettingsRoute },
 ];
 
-const navIcons = ['◫', '✓', '◉', '◇', '▤', '◎', '◈', '⇆', '▦', '⊞', '≡', '▥', '⚙'];
+const detailRoutes: readonly PlatformRoute[] = [
+  { path: '/workflows/runs', title: 'Workflow runs', component: WorkflowRunsScreen },
+  { path: '/workflows/dead-letters', title: 'Dead letters', component: WorkflowRunsScreen },
+  { path: '/workflows/run/:id', title: 'Workflow run', component: WorkflowHistoryScreen },
+  { path: '/erp/order/:id', title: 'Order detail', component: ErpScreen },
+  { path: '/erp/request/:id', title: 'Purchase request', component: ErpScreen },
+  { path: '/erp/purchase-requests', title: 'Purchase requests', component: ErpScreen },
+  { path: '/erp/purchase-orders', title: 'Purchase orders', component: ErpScreen },
+  { path: '/erp/inventory', title: 'Inventory', component: ErpScreen },
+  { path: '/erp/vendors', title: 'Vendors', component: ErpScreen },
+  { path: '/crm/customer/:id', title: 'Customer detail', component: CrmScreen },
+  { path: '/crm/invoice/:id', title: 'Customer invoice', component: CrmScreen },
+  { path: '/crm/contacts', title: 'Contacts', component: CrmScreen },
+  { path: '/crm/pipeline', title: 'Pipeline', component: CrmScreen },
+  { path: '/insights/fraud/:id', title: 'Fraud score', component: InsightsScreen },
+  { path: '/insights/forecast', title: 'Forecast', component: InsightsScreen },
+  { path: '/insights/profile', title: 'Customer profile', component: InsightsScreen },
+  { path: '/insights/profile/:id', title: 'Customer profile', component: InsightsScreen },
+  { path: '/billing', title: 'Billing', component: ModulesAndBillingScreen },
+  { path: '/billing/invoice/:id', title: 'Billing invoice', component: ModulesAndBillingScreen },
+  { path: '/connectors/connector/:id', title: 'Connector detail', component: ConnectorsScreen },
+];
+
+const navigation = [
+  { label: 'Operate', paths: ['/', '/approvals', '/bots', '/workflows'] },
+  { label: 'Records', paths: ['/erp', '/crm'] },
+  { label: 'Intelligence', paths: ['/insights'] },
+  {
+    label: 'Platform',
+    paths: [
+      '/connectors',
+      '/providers',
+      '/credentials',
+      '/modules',
+      '/connections',
+      '/audit',
+      '/usage',
+      '/settings',
+    ],
+  },
+];
+const navIcons = ['◫', '✓', '◉', '◇', '▤', '◎', '◈', '⎇', '⇆', '⌘', '▦', '⊞', '≡', '▥', '⚙'];
+const navPaths = new Set(navigation.flatMap(({ paths }) => paths));
 
 function SettingsScreen({
   me,
@@ -304,18 +305,23 @@ function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: Pla
     const id = ++sequence.current;
     setNotices((items) => [...items.slice(-3), { id, message, tone }]);
   }, []);
-  const routes = new Map(baseRoutes.map((route) => [route.path, route]));
+  const routes = new Map([...baseRoutes, ...detailRoutes].map((route) => [route.path, route]));
   for (const route of extraRoutes) {
     const routePath = normalizePath(route.path);
     routes.set(routePath, { ...route, path: routePath });
   }
-  const route = routes.get(path);
-  const nav = [...routes.values()].filter(
-    (item) => baseRoutes.some(({ path }) => item.path === path) || item.navLabel,
-  );
+  const route = routes.get(path) ?? routes.get(path.replace(/\/[^/]+$/, '/:id'));
+  const nav = [...routes.values()].filter((item) => navPaths.has(item.path) || item.navLabel);
+  const parentPath = path === '/billing' || path.startsWith('/billing/') ? '/modules' : path;
   const activeNav =
-    nav.find((item) => item.path === path) ??
+    nav.find((item) => item.path === parentPath) ??
     [...nav].reverse().find((item) => item.path !== '/' && path.startsWith(item.path + '/'));
+  const navGroups = navigation.map(({ label, paths }) => ({
+    label,
+    items: nav.filter(
+      (item) => paths.includes(item.path) || (label === 'Platform' && !navPaths.has(item.path)),
+    ),
+  }));
 
   useEffect(() => {
     try {
@@ -387,17 +393,24 @@ function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: Pla
           </span>
         </a>
         <nav aria-label="Platform navigation">
-          {nav.map((item, index) => (
-            <a
-              key={item.path}
-              href={'#' + item.path}
-              aria-current={activeNav?.path === item.path ? 'page' : undefined}
-            >
-              <span aria-hidden="true" className="bs-nav-icon">
-                {navIcons[index] ?? '·'}
-              </span>
-              {item.navLabel ?? item.title}
-            </a>
+          {navGroups.map(({ label, items }) => (
+            <div key={label} className="bs-nav-group" role="group" aria-label={label}>
+              <p className="bs-nav-group-title" aria-hidden="true">
+                {label}
+              </p>
+              {items.map((item) => (
+                <a
+                  key={item.path}
+                  href={'#' + item.path}
+                  aria-current={activeNav?.path === item.path ? 'page' : undefined}
+                >
+                  <span aria-hidden="true" className="bs-nav-icon">
+                    {navIcons[nav.indexOf(item)] ?? '·'}
+                  </span>
+                  {item.navLabel ?? item.title}
+                </a>
+              ))}
+            </div>
           ))}
         </nav>
       </aside>
@@ -424,7 +437,7 @@ function PlatformShell({ client, extraRoutes = [], resolveWorkspaceClient }: Pla
                     {route?.title ?? 'Page not found'}
                   </h1>
                   <div key={workspace.id + ':' + path}>
-                    {path === '/settings' && Component === Placeholder ? (
+                    {path === '/settings' && Component === SettingsRoute ? (
                       <SettingsScreen me={me} theme={theme} setTheme={setTheme} />
                     ) : Component ? (
                       <Component

@@ -64,7 +64,7 @@ function ApprovalDetail({
           <h3>Material SHA-256</h3>
           <CodeBlock label="Material SHA-256">{approval.materialHash}</CodeBlock>
         </div>
-        {'materialPreview' in approval && approval.materialPreview != null && (
+        {approval.materialPreview != null && (
           <div>
             <h3>Bound material inputs</h3>
             <CodeBlock label="Bound material inputs">
