@@ -6,20 +6,34 @@ import {
   type ConnectionInput,
   type CredentialInput,
   type MutationContext,
+  type Permission,
   type PlatformApproval,
+  type PlatformAuth,
   type PlatformServices,
   type PlanInput,
   type UsageFilters,
 } from '../../../../packages/core/src/platform/index.ts';
 import { validates } from '../governance/catalog.ts';
 import type { IdentityVerifier } from '../governance/identity.ts';
+import { registerAccessRoutes } from './access-routes.ts';
 import document from './openapi.json' with { type: 'json' };
 
-export { createPlatformFixtureIdentityVerifier } from './identity.ts';
+export {
+  createPlatformFixtureIdentityVerifier,
+  createPlatformSessionIdentityVerifier,
+} from './identity.ts';
 
 interface PlatformOptions {
   services: PlatformServices;
-  verifyIdentity: IdentityVerifier;
+  verifyIdentity?: IdentityVerifier;
+  auth?: PlatformAuth;
+}
+
+declare module 'fastify' {
+  interface FastifyContextConfig {
+    platformPublic?: boolean;
+    platformAccess?: boolean;
+  }
 }
 
 class InvalidRequest extends Error {}
@@ -54,12 +68,18 @@ const statusFor = {
 
 export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
   app,
-  { services, verifyIdentity },
+  { services, verifyIdentity, auth },
 ) => {
+  if ((!auth && !verifyIdentity) || (auth && auth.directory !== services.directory))
+    throw new Error('Platform routes require a verifier for their identity directory.');
   const base = '/platform/v1';
   const identities = new WeakMap<
     FastifyRequest,
     NonNullable<ReturnType<typeof services.directory.resolve>>
+  >();
+  const sessions = new WeakMap<
+    FastifyRequest,
+    NonNullable<ReturnType<PlatformAuth['sessions']['verify']>>
   >();
   const {
     directory,
@@ -75,13 +95,19 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
 
   app.addHook('onRequest', async (request, reply) => {
     reply.header('Cache-Control', 'no-store');
+    if (request.routeOptions.config.platformPublic) {
+      reply.header('Referrer-Policy', 'no-referrer');
+      return;
+    }
     const token = /^Bearer ([^\s,]+)$/i.exec(request.headers.authorization ?? '')?.[1];
-    const identity = token ? await verifyIdentity(token) : undefined;
+    const session = token && auth ? auth.sessions.verify(token) : undefined;
+    const identity = auth ? session?.identity : token ? await verifyIdentity?.(token) : undefined;
     const resolved = identity && directory.resolve(identity);
     if (!resolved) {
       return reply.header('WWW-Authenticate', 'Bearer').code(401).send({ error: 'forbidden' });
     }
     identities.set(request, resolved);
+    if (session) sessions.set(request, session);
   });
 
   app.setErrorHandler((error, request, reply) => {
@@ -112,8 +138,8 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
   }
 
   function context(request: FastifyRequest, adminOnly = false): MutationContext {
-    const { actor, tenant, role } = identityOf(request);
-    if (adminOnly && role !== 'admin') throw new PlatformError('forbidden');
+    const { actor, tenant } = identityOf(request);
+    if (adminOnly) requirePermission(request, 'settings.manage', true);
     return {
       tenantId: tenant.id,
       actor: { id: actor.id, kind: actor.kind },
@@ -123,7 +149,45 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     };
   }
 
-  app.get(base + '/me', async (request) => identityOf(request));
+  function requireStepUp(request: FastifyRequest) {
+    if (auth?.requireStepUp && !sessions.get(request)?.steppedUp)
+      throw new PlatformError('forbidden');
+  }
+
+  function requirePermission(request: FastifyRequest, permission: Permission, sensitive = false) {
+    const { actor, tenant } = identityOf(request);
+    if (!directory.allows({ tenantId: tenant.id, actor }, permission))
+      throw new PlatformError('forbidden');
+    if (sensitive) requireStepUp(request);
+  }
+
+  function requireOperator(request: FastifyRequest) {
+    if (!sessions.get(request)?.platformOperator) throw new PlatformError('forbidden');
+    requireStepUp(request);
+  }
+
+  // Legacy platform reads share one permission, while identity and access routes check their own.
+  app.addHook('preHandler', async (request) => {
+    if (request.routeOptions.config.platformPublic || request.routeOptions.config.platformAccess)
+      return;
+    if (request.method === 'GET' || request.method === 'HEAD')
+      requirePermission(request, 'platform.read');
+  });
+
+  registerAccessRoutes(app, {
+    base,
+    services,
+    auth,
+    context,
+    requirePermission,
+    requireOperator,
+    validate,
+    query,
+  });
+
+  app.get(base + '/me', { config: { platformAccess: true } }, async (request) =>
+    identityOf(request),
+  );
   app.get(base + '/workspaces', async (request) => directory.workspaces(tenantOf(request)));
   app.get<{ Params: { id: string } }>(base + '/workspaces/:id', async (request) => {
     const workspace = directory

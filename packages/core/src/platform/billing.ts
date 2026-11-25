@@ -222,6 +222,9 @@ export class BillingLedger {
   private readonly taxTable: Readonly<Record<string, TaxRate>>;
   private readonly taxRegion: (tenantId: string) => string;
   private readonly settlement: SettlementAdapter;
+  private readonly initialPlan?: (
+    tenantId: string,
+  ) => (PlanInput & { createdAt: string }) | undefined;
 
   constructor(
     repositories: BillingRepositories,
@@ -229,6 +232,7 @@ export class BillingLedger {
     now: () => string,
     startsAt: string,
     options: BillingOptions = {},
+    initialPlan?: BillingLedger['initialPlan'],
   ) {
     this.repositories = repositories;
     this.audit = audit;
@@ -239,6 +243,7 @@ export class BillingLedger {
     this.taxTable = structuredClone(options.taxTable ?? { ON: { code: 'HST', basisPoints: 1300 } });
     this.taxRegion = options.taxRegion ?? (() => 'ON');
     this.settlement = options.settlement ?? fakeSettlement;
+    this.initialPlan = initialPlan;
   }
 
   skus() {
@@ -246,13 +251,14 @@ export class BillingLedger {
   }
 
   private async plans(tenantId: string): Promise<PlanRevision[]> {
+    const initial = this.initialPlan?.(tenantId);
     return (
       (await this.repositories.plans.get(tenantId, 'subscription')) ?? [
         {
           version: 1,
-          effectiveAt: this.firstWindow.start,
-          addOns: [],
-          overageLimitCents: 0,
+          effectiveAt: initial ? timestamp(initial.createdAt) : this.firstWindow.start,
+          addOns: initial?.addOns ?? [],
+          overageLimitCents: initial?.overageLimitCents ?? 0,
           priceVersion: catalogPriceVersion,
         },
       ]

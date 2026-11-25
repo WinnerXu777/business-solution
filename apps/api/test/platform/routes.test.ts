@@ -286,7 +286,14 @@ test('approval routes sign through governance, reject pending grants and expose 
   assert.equal(draft.state, 'ok');
   const po = draft.output.approval.id;
   assert.deepEqual((await request('/approvals', 'other')).json(), []);
-  assert.equal((await request('/approvals?state=pending')).json()[0].id, po);
+  const approvalItem = (await request('/approvals?state=pending')).json()[0];
+  assert.equal(approvalItem.id, po);
+  assert.deepEqual(approvalItem.materialPreview, {
+    requestId: draft.output.draft.requestId,
+    vendorId: draft.output.draft.vendorId,
+    currency: 'CAD',
+    lineCount: draft.output.draft.lines.length,
+  });
   assert.equal((await request('/approvals/' + po + '/sign', 'operator', 'POST')).statusCode, 403);
   assert.equal((await request('/approvals/' + po + '/sign', 'admin', 'POST')).statusCode, 403);
   const signedPo = await request('/approvals/' + po + '/sign', 'approver', 'POST');
