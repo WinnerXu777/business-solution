@@ -1,5 +1,7 @@
 """Fixture chat and browser voice share this graph and its governed tools."""
 
+from dataclasses import replace
+from functools import partial
 from typing import TypedDict
 
 from langgraph.graph import END, START, StateGraph
@@ -31,7 +33,7 @@ SEND_TOOLS = {
 }
 
 
-def _compile(call, saver):
+def _compile(call, saver, *, use_model_reply=False):
     graph = StateGraph(ChatState, input_schema=ChatInput)
 
     def answer(state: ChatState) -> dict:
@@ -55,7 +57,8 @@ def _compile(call, saver):
             if chat.orderId else state.get("proposal")
         )
         if proposal is None:
-            return _answer(chat.sessionId, "Ask for an order number, purchase request, or invoice.")
+            reply = llm["output"]["text"] if use_model_reply else "Ask for an order number, purchase request, or invoice."
+            return _answer(chat.sessionId, reply)
         tool, inputs = proposal["tool"], proposal["input"]
         if tool not in {"order.read", "purchase.order.draft", "message.preview"}:
             raise ValueError("Unsupported chat proposal")
@@ -139,14 +142,17 @@ CHAT = BotDefinition(
 )
 
 
-def build_graph(gateway: Gateway | None = None):
+NATIVE_CHAT = replace(CHAT, graph_factory=partial(_compile, use_model_reply=True))
+
+
+def build_graph(gateway: Gateway | None = None, *, model=None):
     """Compatibility entry point for the original graph smoke and direct fixtures."""
     if gateway is None:
         graph = StateGraph(ChatState)
         graph.add_edge(START, END)
         return graph.compile()
     store = MemoryBotStore()
-    runtime = BotRuntime(BotRegistry(CHAT), store, gateway)
+    runtime = BotRuntime(BotRegistry(NATIVE_CHAT if model else CHAT), store, gateway, model=model)
 
     class FixtureGraph:
         def invoke(self, value, config):
