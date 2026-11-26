@@ -1,0 +1,18 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-rivetquay-postgres",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "rivetquay/postgres/" },
+      "Expiration": { "Days": 30 },
+      "NoncurrentVersionExpiration": { "NoncurrentDays": 30 },
+      "AbortIncompleteMultipartUpload": { "DaysAfterInitiation": 1 }
+    },
+    {
+      "ID": "remove-rivetquay-expired-delete-markers",
+      "Status": "Enabled",
+      "Filter": { "Prefix": "rivetquay/postgres/" },
+      "Expiration": { "ExpiredObjectDeleteMarker": true }
+    }
+  ]
+}

@@ -1,0 +1,112 @@
+name: rivetquay
+
+x-hardened: &hardened
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  init: true
+  restart: unless-stopped
+
+services:
+  web:
+    <<: *hardened
+    image: ${WEB_IMAGE:?Set WEB_IMAGE}
+    environment:
+      BS_DEMO_HOST: ${BS_DEMO_HOST:?Set BS_DEMO_HOST}
+      BS_OWNER_CIDR: ${BS_OWNER_CIDR:?Set BS_OWNER_CIDR}
+    ports:
+      - '80:80'
+      - '443:443'
+    sysctls:
+      net.ipv4.ip_unprivileged_port_start: '0'
+    volumes:
+      - caddy-data:/data
+      - caddy-config:/config
+      - ${BS_DEPLOY_ROOT:?Set BS_DEPLOY_ROOT}/switch:/switch:ro
+    networks:
+      front: {}
+      private:
+        ipv4_address: 172.29.184.2
+    depends_on:
+      api:
+        condition: service_healthy
+
+  api:
+    <<: *hardened
+    image: ${API_IMAGE:?Set API_IMAGE}
+    env_file:
+      - ${BS_DEPLOY_ROOT:?Set BS_DEPLOY_ROOT}/secrets/api.env
+    environment:
+      BS_WEB_ORIGIN: https://${BS_DEMO_HOST:?Set BS_DEMO_HOST}
+      BS_EDGE_IP: 172.29.184.2
+      BS_WORKER_PYTHON: /repo/infra/compose/worker-client.mjs
+      BS_WORKER_SOCKET: /run/fixture-worker/runtime.sock
+      BS_MAILPIT: ${BS_MAILPIT:-0}
+      BS_MAILPIT_HOST: mailpit
+    volumes:
+      - worker-socket:/run/fixture-worker:ro
+    networks: [private]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      worker:
+        condition: service_healthy
+
+  worker:
+    <<: *hardened
+    image: ${WORKER_IMAGE:?Set WORKER_IMAGE}
+    environment:
+      BS_WORKER_SOCKET: /run/fixture-worker/runtime.sock
+    network_mode: none
+    volumes:
+      - worker-socket:/run/fixture-worker
+
+  postgres:
+    <<: *hardened
+    image: postgres:17.7-alpine
+    user: '70:70'
+    env_file:
+      - ${BS_DEPLOY_ROOT:?Set BS_DEPLOY_ROOT}/secrets/postgres.env
+    tmpfs:
+      - /var/run/postgresql:uid=70,gid=70,mode=0775
+      - /tmp:mode=1777
+    networks: [private]
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ../../packages/contracts/fixtures/seed.sql:/docker-entrypoint-initdb.d/10-demo.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, 'pg_isready -h 127.0.0.1 -U demo -d demo']
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  mailpit:
+    <<: *hardened
+    image: axllent/mailpit:v1.27.11
+    profiles: [demo]
+    user: '10003:10003'
+    tmpfs:
+      - /tmp:mode=1777
+    ports:
+      - '127.0.0.1:8025:8025'
+    networks: [private, demo]
+    healthcheck:
+      test: [CMD, /mailpit, readyz]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+networks:
+  front:
+  private:
+    internal: true
+    ipam:
+      config:
+        - subnet: 172.29.184.0/24
+  demo:
+
+volumes:
+  pgdata:
+  worker-socket:
+  caddy-data:
+  caddy-config:

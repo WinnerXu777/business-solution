@@ -1,0 +1,57 @@
+{
+	admin off
+	servers {
+		protocols h1 h2
+		timeouts {
+			read_header 10s
+			read_body 30s
+			idle 60s
+		}
+	}
+}
+
+{$BS_DEMO_HOST} {
+	root * /srv
+	header {
+		-Server
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options nosniff
+		X-Frame-Options DENY
+		Referrer-Policy no-referrer
+	}
+
+	@outside not remote_ip {$BS_OWNER_CIDR}
+	@maintenance file {
+		root /switch
+		try_files maintenance
+	}
+	@api path /health /platform/v1 /platform/v1/* /automation /automation/* /v1 /v1/* /mcp
+	route {
+		respond @outside 403
+		respond @maintenance 503
+		handle @api {
+			request_body {
+				max_size 262144
+			}
+			reverse_proxy api:3000 {
+				header_up X-Forwarded-For {http.request.remote.host}
+			}
+		}
+		handle {
+			header Permissions-Policy "camera=(), microphone=(self), geolocation=()"
+			header Content-Security-Policy "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; base-uri 'none'; object-src 'none'; form-action 'self'; frame-ancestors 'none'"
+			try_files {path} /index.html
+			file_server
+		}
+	}
+}
+
+http://:8081 {
+	root * /srv
+	@built {
+		path /health
+		file /index.html
+	}
+	respond @built 200
+	respond 404
+}
