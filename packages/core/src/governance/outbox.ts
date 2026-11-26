@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { ProviderAdapters } from '@bs/adapters';
 import type { RecordRepository } from '@bs/business';
-import type { DeliveryReceipt, Denied, ToolResult } from '@bs/contracts';
+import type { DeliveryReceipt, Denied, MessagePreview, ToolResult } from '@bs/contracts';
 import type { Reservation } from './billing.ts';
 import { digest, denied, isRetryableOutcome, ok, unavailable, unknownOutcome } from './results.ts';
 import type { Effect, GovernanceStore, OutboxJob, StoredIntent, TenantState } from './store.ts';
@@ -12,6 +12,11 @@ interface WorkerOptions {
   providers?: Partial<ProviderAdapters>;
   authorize(state: TenantState, intent: StoredIntent): Promise<Denied | undefined>;
   settle(state: TenantState, intent: StoredIntent, result: ToolResult): void;
+  guardContact?: (
+    preview: MessagePreview,
+    purpose: 'collections' | 'marketing',
+    attemptId: string,
+  ) => Promise<boolean>;
   quote?: (intent: StoredIntent) => Reservation | undefined;
   clock?: () => number;
 }
@@ -146,6 +151,9 @@ export class OutboxWorker {
     if (effect.kind === 'message') {
       const adapter = providers?.messages?.[effect.preview.channel];
       if (!adapter) return unavailable();
+      const { guardContact } = this.options;
+      if (guardContact && !(await guardContact(effect.preview, 'collections', id)))
+        return denied('suppressed');
       const result = await adapter.send(structuredClone(effect.preview), id);
       return 'state' in result ? result : ok(result);
     }
@@ -153,7 +161,12 @@ export class OutboxWorker {
     if (!adapter) return unavailable();
     const receipts: DeliveryReceipt[] = [];
     for (const preview of effect.previews) {
-      const result = await adapter.send(structuredClone(preview), messageKey(id, preview.id));
+      const key = messageKey(id, preview.id);
+      const { guardContact } = this.options;
+      if (guardContact && !(await guardContact(preview, 'marketing', key))) {
+        return receipts.length === 0 ? denied('suppressed') : unknownOutcome(id);
+      }
+      const result = await adapter.send(structuredClone(preview), key);
       if ('state' in result) return receipts.length === 0 ? result : unknownOutcome(id);
       receipts.push(result);
     }

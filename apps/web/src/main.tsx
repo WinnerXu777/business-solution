@@ -1,6 +1,6 @@
 ﻿import { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { HttpPlatformClient, PlatformApp, type PlatformRoute } from '@bs/ui';
+import { AuthenticatedPlatformApp, HttpPlatformClient, PlatformApp, type PlatformRoute } from '@bs/ui';
 import '@xyflow/react/dist/style.css';
 import './styles.css';
 import {
@@ -9,7 +9,6 @@ import {
   useAutomation,
   type WorkflowRun,
 } from './api.ts';
-import { useOidcSession } from './auth.ts';
 import { BotRuns } from './bot-runs.tsx';
 import { platformFetch } from './platform-http.ts';
 import { Notice } from './panels.tsx';
@@ -93,12 +92,11 @@ const routes: readonly PlatformRoute[] = [
   },
 ];
 
-function App() {
-  const [fixtureToken, setToken] = useState(fixtureLogin ? logins[0][0] : '');
+const sessionClient = new HttpPlatformClient({ baseUrl, fetch: platformFetch });
+
+function FixtureApp() {
+  const [token, setToken] = useState(fixtureLogin ? logins[0][0] : '');
   const [entered, setEntered] = useState('');
-  const [tenant, setTenant] = useState('tenant-rivetquay');
-  const oidc = useOidcSession(baseUrl, oidcLogin);
-  const token = oidcLogin ? (oidc.token ?? '') : fixtureToken;
   const client = useMemo(
     () => new HttpPlatformClient({ baseUrl, token, fetch: platformFetch }),
     [token],
@@ -107,34 +105,7 @@ function App() {
   return (
     <>
       <div className="fixture-session">
-        {oidcLogin ? (
-          <>
-            {oidc.error && <p role="alert">{oidc.error}</p>}
-            {token ? (
-              <button type="button" onClick={() => void oidc.signOut()}>
-                Sign out
-              </button>
-            ) : (
-              <form
-                onSubmit={(event) => {
-                  event.preventDefault();
-                  void oidc.signIn(tenant);
-                }}
-              >
-                <label>
-                  Workspace
-                  <select value={tenant} onChange={(event) => setTenant(event.target.value)}>
-                    <option value="tenant-rivetquay">Rivetquay</option>
-                    <option value="tenant-spoolharbour">Spoolharbour</option>
-                  </select>
-                </label>
-                <button type="submit" disabled={oidc.busy}>
-                  Sign in with Dex
-                </button>
-              </form>
-            )}
-          </>
-        ) : fixtureLogin ? (
+        {fixtureLogin ? (
           <label>
             Fixture identity
             <select value={token} onChange={(event) => setToken(event.target.value)}>
@@ -181,6 +152,29 @@ function App() {
         </AutomationContext.Provider>
       )}
     </>
+  );
+}
+
+const sessionAutomation = createAutomationClient(baseUrl, '');
+
+function App() {
+  if (!oidcLogin) return <FixtureApp />;
+  return (
+    <AutomationContext.Provider value={sessionAutomation}>
+      <AuthenticatedPlatformApp
+        client={sessionClient}
+        extraRoutes={routes}
+        navigate={(url) => {
+          const target = new URL(url, window.location.href);
+          if (target.username || target.password ||
+            !(target.protocol === 'https:' ||
+              (target.protocol === 'http:' && ['localhost', '127.0.0.1'].includes(target.hostname)))) {
+            throw new Error('Invalid sign-in URL');
+          }
+          window.location.assign(target.href);
+        }}
+      />
+    </AutomationContext.Provider>
   );
 }
 

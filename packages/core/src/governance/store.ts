@@ -12,6 +12,7 @@ import type {
 } from '@bs/contracts';
 import type { PostgresExecutor } from '../../../business/src/persistence/index.ts';
 
+import type { EventInput } from '../platform/events.ts';
 import type { BillingEntry, Reservation } from './billing.ts';
 import type { StoredReview } from './records.ts';
 
@@ -67,6 +68,7 @@ interface Tables {
   usage: UsageCounterEvent;
   billing_event: BillingEntry;
   record_review: StoredReview;
+  event_outbox: { event: EventInput; published?: true };
 }
 
 const tables = [
@@ -78,6 +80,7 @@ const tables = [
   'usage',
   'billing_event',
   'record_review',
+  'event_outbox',
 ] as const;
 
 export interface TenantState {
@@ -96,6 +99,7 @@ function emptyState(): TenantState {
       usage: new Map(),
       billing_event: new Map(),
       record_review: new Map(),
+      event_outbox: new Map(),
     },
     audit: [],
   };

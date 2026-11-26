@@ -1,3 +1,5 @@
+import type { ActorGrant } from '@bs/contracts';
+import type { FastifyInstance } from 'fastify';
 import { randomBytes } from 'node:crypto';
 import {
   PlatformAuth,
@@ -19,11 +21,16 @@ export interface HostAuth {
   subjects: Readonly<Record<string, string>>;
 }
 
-export function configureAuth(directory: TenantDirectory, config: HostAuth) {
+export function configureAuth(app: FastifyInstance, directory: TenantDirectory, grants: ActorGrant[], config: HostAuth) {
   const auth = new PlatformAuth(directory, config.options);
-  for (const [actor, subject] of Object.entries(config.subjects)) {
-    directory.linkUser(actor, config.options.oidc.issuer, subject);
-  }
+  app.addHook('onReady', async () => {
+    for (const [actor, subject] of Object.entries(config.subjects)) {
+      const tenantId = actor === 'actor-admin' ? 'tenant-rivetquay' :
+        grants.find((row) => row.actor.id === actor)?.tenantId;
+      if (!tenantId) throw new Error('Unknown fixture OIDC actor.');
+      await directory.linkUser(tenantId, actor, config.options.oidc.issuer, subject);
+    }
+  });
   return auth;
 }
 

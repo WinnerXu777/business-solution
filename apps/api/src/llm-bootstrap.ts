@@ -33,7 +33,7 @@ export function platformLlm(services: PlatformServices, now: () => string): LlmP
         );
       if (!match) return null;
       const [, tenantId, id, secret] = match;
-      if (services.directory.activeVersion(tenantId) === undefined) return null;
+      if ((await services.directory.activeVersion(tenantId)) === undefined) return null;
       const authorized = await services.connections.authenticate(
         tenantId,
         id,
@@ -41,7 +41,7 @@ export function platformLlm(services: PlatformServices, now: () => string): LlmP
         'api_client',
         'llm.' + endpoint,
       );
-      return authorized && services.directory.activeVersion(tenantId) !== undefined
+      return authorized && (await services.directory.activeVersion(tenantId)) !== undefined
         ? { tenantId }
         : null;
     },

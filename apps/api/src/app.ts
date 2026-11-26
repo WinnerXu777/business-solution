@@ -1,3 +1,4 @@
+import { randomBytes, randomUUID } from 'node:crypto';
 import { createConnection } from 'node:net';
 import { MemoryRecordRepository, PostgresRecordRepository } from '@bs/business';
 import {
@@ -32,6 +33,18 @@ import { platformPostgres } from './platform/postgres.ts';
 import { connectPlatformGateway } from './platform-bootstrap.ts';
 import { simulatedLlmPrices } from '../../../packages/core/src/governance/billing.ts';
 import { readVaultMasterKey } from '../../../packages/core/src/platform/vault.ts';
+
+import { ConsoleSpanExporter, Tracer } from '../../../packages/core/src/observability/index.ts';
+import { installOps, instrumentGatewayCall } from './ops/index.ts';
+import { channelsPlugin, type ChannelsOptions } from './channels/index.ts';
+import { botsPlugin } from './bots/index.ts';
+import { createFixtureBotsBackend } from './bots/fixture.ts';
+import { demoPrivacy, fixtureChannelBootstrap } from './fixture-bootstrap.ts';
+import { workflowRoutes } from './workflows/index.ts';
+import { createWorkflowEffects, nativeDrafts } from './workflows/effects.ts';
+import { platformLlm } from './llm-bootstrap.ts';
+import { browserLlm, consoleLlm, registerConsoleRoutes } from './console-bootstrap.ts';
+import { installCookieSessions } from './session-bootstrap.ts';
 
 const fixtureLogins = {
   'fixture-admin': 'actor-admin',
@@ -74,6 +87,11 @@ function fixtureBearerBindings(env: NodeJS.ProcessEnv, { grants }: DemoFixtures)
 
 interface AppOptions {
   auth?: HostAuth;
+  services?: PlatformServices;
+  platform?: Pick<NonNullable<Parameters<typeof createPlatformServices>[0]>, 'privacy' | 'webhookTransport'>;
+  channels?: ChannelsOptions;
+  fixturePlugins?: boolean;
+  eventPollMs?: number;
   connectors?: ConnectorPluginOptions;
   fixtureConnectors?: boolean;
   llm?: LlmPluginOptions | ((services: PlatformServices, now: () => string) => LlmPluginOptions);
@@ -96,16 +114,18 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
     const token = bearerToken(request.headers.authorization);
     return token ? verifyIdentity(token) : undefined;
   }
+  if (options.auth) installCookieSessions(app);
+  const channelFixture = options.fixturePlugins ? fixtureChannelBootstrap(env, now) : undefined;
   const connectors = options.fixtureConnectors
     ? fixtureConnectors(() => services, resolveIdentity, now)
     : undefined;
   const records = store
     ? new PostgresRecordRepository(store, connectors?.records)
     : new MemoryRecordRepository(fixtures, connectors?.records);
-  function tenantActors(tenantId: string) {
-    return services.directory.activeVersion(tenantId) === undefined
+  async function tenantActors(tenantId: string) {
+    return (await services.directory.activeVersion(tenantId)) === undefined
       ? []
-      : services.directory.members(tenantId).map(({ user }) => user.actor);
+      : (await services.directory.members(tenantId)).map(({ user }) => user.actor);
   }
   const governed = new GovernedGateway({
     fixtures,
@@ -136,6 +156,14 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
         dataClasses: ['synthetic'],
       }),
     billing: () => services.billing,
+    async guardContact(preview, purpose, attemptId) {
+      const { tenantId, customerId: contactId, channel, recipient } = preview;
+      const decision = await services.contacts.canContact(tenantId, contactId, channel, purpose);
+      if (!decision.allow) return false;
+      return (await services.contacts.reserveContact(
+        tenantId, { contactId, channel, purpose }, attemptId, recipient,
+      )).allow;
+    },
     onBillingError: () => app.log.error('Governance billing ingestion failed'),
     providers: {
       llm: createFixtureRouter(),
@@ -155,16 +183,21 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
       scoring: createFixtureScoringAdapter(),
     },
   });
-  const services: ReturnType<typeof createPlatformServices> = createPlatformServices({
+  const services: ReturnType<typeof createPlatformServices> = options.services ?? createPlatformServices({
     fixtures,
     gateway: governed,
     now,
     persistence: pool ? platformPostgres(pool) : undefined,
     fixtureUsageBridge: false,
     billing: { providerPrices: simulatedLlmPrices },
-    vaultMasterKey: readVaultMasterKey(env),
+    vaultMasterKey: readVaultMasterKey(env) ?? (!pool && options.fixturePlugins ? randomBytes(32) : undefined),
+    ...(options.fixturePlugins && {
+      privacy: demoPrivacy(fixtures),
+      webhookTransport: async () => ({ status: 204 }),
+    }),
+    ...options.platform,
   });
-  const auth = options.auth && configureAuth(services.directory, options.auth);
+  const auth = options.auth && configureAuth(app, services.directory, fixtures.grants, options.auth);
   const verifyIdentity = auth
     ? createPlatformSessionIdentityVerifier(auth)
     : createPlatformFixtureIdentityVerifier(
@@ -174,6 +207,87 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
   const { transport: gateway, reports } = connectPlatformGateway(services, governed);
   const canReview = (identity: VerifiedIdentity) =>
     services.directory.allows(identity, 'approvals.decide');
+
+  const tracer = new Tracer(env.BS_TRACE_CONSOLE === '1' ? new ConsoleSpanExporter() : undefined);
+  gateway.call = instrumentGatewayCall(tracer, gateway.call.bind(gateway));
+  const probePool = pool && new pg.Pool({
+    connectionString: env.DATABASE_URL,
+    max: 2,
+    connectionTimeoutMillis: 750,
+    query_timeout: 750,
+    statement_timeout: 750,
+  });
+  if (probePool) {
+    probePool.on('error', () => app.log.warn('Readiness connection failed'));
+    app.addHook('onClose', () => probePool.end());
+  }
+  installOps(app, {
+    tracer,
+    checks: {
+      database: async () => {
+        if (probePool) await probePool.query('SELECT 1');
+        return true;
+      },
+      queue: async () => {
+        if (!probePool) return true;
+        const { rows } = await probePool.query<{ ready: boolean }>(
+          "SELECT to_regclass('governance.outbox') IS NOT NULL AS ready",
+        );
+        return rows[0]?.ready === true;
+      },
+      providers: async () => {
+        if (env.BS_MAILPIT !== '1') return true;
+        return new Promise<boolean>((resolve) => {
+          const socket = createConnection({
+            host: env.BS_MAILPIT_HOST ?? '127.0.0.1',
+            port: Number(env.BS_MAILPIT_PORT ?? 1025),
+          });
+          function finish(ready: boolean) {
+            socket.destroy();
+            resolve(ready);
+          }
+          socket.setTimeout(700, () => finish(false));
+          socket.once('error', () => finish(false));
+          socket.once('data', (data) => finish(data.toString().startsWith('220')));
+        });
+      },
+    },
+    authorize: async (request) => {
+      const identity = await resolveIdentity(request);
+      return !!identity &&
+        identity.tenantId === fixtureAdmin.tenantId &&
+        (await services.directory.resolve(identity))?.role === 'admin';
+    },
+  });
+
+  const llmOption = options.llm ?? (channelFixture && platformLlm);
+  const llm = typeof llmOption === 'function' ? llmOption(services, now) : llmOption;
+  if (llm) {
+    const api = channelFixture ? channelFixture.llm(llm) : llm;
+    app.register(llmPlugin, consoleLlm(app, browserLlm(app, services, api, resolveIdentity)));
+  }
+  registerConsoleRoutes(app, services, resolveIdentity, auth || undefined);
+
+  if (!options.services && env.BS_FIXTURE_LOGIN === '1') {
+    app.addHook('onReady', async () => {
+      const tenantId = fixtureAdmin.tenantId;
+      const known = await services.contacts.listConsents(tenantId);
+      const demos = [
+        ['cust-002', 'collections', 'email'],
+        ['cust-002', 'collections', 'sms'],
+        ['cust-002', 'collections', 'voice'],
+        ['cust-008', 'marketing', 'email'],
+        ['cust-009', 'marketing', 'email'],
+      ] as const;
+      for (const [contactId, purpose, channel] of demos) {
+        if (known.some((row) => row.contactId === contactId && row.channel === channel && row.purpose === purpose)) continue;
+        const id = randomUUID();
+        await services.contacts.grant({
+          ...fixtureAdmin, source: 'worker', traceId: id, correlationId: id,
+        }, { contactId, purpose, channel, basis: 'express', source: 'fixture', evidenceRef: 'fixture-demo' });
+      }
+    });
+  }
 
   app.register(async (instance) => {
     instance.addHook('onRequest', (request, _reply, done) => {
@@ -201,9 +315,40 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
   registerInsightsRoutes(app, { gateway, resolveIdentity });
   const connectorOptions = options.connectors ?? connectors?.options;
   if (connectorOptions) app.register(connectorsPlugin, connectorOptions);
-  if (options.llm) {
-    const llm = typeof options.llm === 'function' ? options.llm(services, now) : options.llm;
-    app.register(llmPlugin, llm);
+  const channels = options.channels ?? channelFixture?.channels(app, services, verifyIdentity);
+  if (channels) app.register(channelsPlugin, channels);
+
+  if (options.fixturePlugins) {
+    app.register(botsPlugin, {
+      backend: createFixtureBotsBackend(env.BS_WORKER_PYTHON),
+      async resolveIdentity(request) {
+        const identity = await resolveIdentity(request);
+        const role = identity && (await services.directory.resolve(identity))?.role;
+        if (identity && (role === 'admin' || role === 'operator' || role === 'approver' || role === 'reader')) {
+          return { ...identity, role };
+        }
+      },
+    });
+    if (channelFixture) app.register(workflowRoutes, {
+      async identify(request) {
+        const identity = await resolveIdentity(request);
+        const member = identity && (await services.directory.resolve(identity));
+        if (identity && member) return { ...identity, roles: [member.role] };
+      },
+      async authorize(scope, capability) {
+        if (capability === 'decide') return canReview(scope);
+        if (capability === 'read') return (await services.directory.resolve(scope)) !== undefined;
+        return services.directory.allows(scope, 'actions.request');
+      },
+      relay: createWorkflowEffects({
+        gateway,
+        sign: (scope, id) => gateway.signApproval(scope, id),
+        draft: nativeDrafts(app, (scope) => channelFixture.key(scope.tenantId)),
+        authorize: ({ scope }) => services.directory.allows(scope, 'actions.request'),
+      }),
+      python: env.BS_WORKER_PYTHON,
+      now: () => Date.parse(now()),
+    });
   }
 
   const automationGateway: ToolGateway = {
@@ -214,7 +359,7 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
       // original requester after checking the stored grant and designated signer.
       if (request.tool === 'workflow.template.run' && request.input.approvalId) {
         const { envelope, input } = request;
-        if (canReview(envelope)) {
+        if (await canReview(envelope)) {
           const grants = await gateway.listApprovals(envelope.tenantId);
           const approval = grants.find(
             (grant) =>
@@ -223,7 +368,7 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
               grant.tool === request.tool &&
               (grant.state === 'approved' || grant.state === 'consumed'),
           );
-          const requester = tenantActors(envelope.tenantId).find(
+          const requester = (await tenantActors(envelope.tenantId)).find(
             (actor) => actor.id === approval?.requestedBy,
           );
           if (requester) {
@@ -236,7 +381,7 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
   };
   app.register(
     async (instance) => {
-      const identities = new WeakMap<FastifyRequest, VerifiedIdentity>();
+      const identities = new WeakMap<FastifyRequest, { identity: VerifiedIdentity; review: boolean }>();
       instance.addHook('onRequest', async (request, reply) => {
         const identity = await resolveIdentity(request);
         if (!identity) {
@@ -245,20 +390,20 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
             .code(401)
             .send({ error: 'unauthorized' });
         }
-        identities.set(request, identity);
+        identities.set(request, { identity, review: await canReview(identity) });
         reply.header('Cache-Control', 'no-store');
       });
       await registerAutomation(instance, {
         gateway: automationGateway,
         python: env.BS_WORKER_PYTHON,
         identity(request, role) {
-          const identity = identities.get(request);
-          if (identity && (role === 'requester' || canReview(identity))) return identity;
+          const verified = identities.get(request);
+          if (verified && (role === 'requester' || verified.review)) return verified.identity;
         },
         async authorizeRuntime(scope, capability) {
           if (
-            !services.directory.allows(scope, 'actions.request') &&
-            !(canReview(scope) && (capability === 'bot' || capability === 'workflow'))
+            !(await services.directory.allows(scope, 'actions.request')) &&
+            !((await canReview(scope)) && (capability === 'bot' || capability === 'workflow'))
           ) {
             return false;
           }
@@ -274,18 +419,22 @@ export function createApp(env: NodeJS.ProcessEnv = process.env, options: AppOpti
     { prefix: '/automation' },
   );
 
-  if (store) {
+  {
     const tenants = [...new Set(fixtures.grants.map((grant) => grant.tenantId))];
     let active: Promise<void> | undefined;
     const interval = setInterval(() => {
       active ??= (async () => {
-        for (const tenant of tenants) await governed.dispatchOutbox(tenant);
+        for (const tenant of tenants) {
+          if (store) await governed.dispatchOutbox(tenant);
+          await governed.publishEvents(tenant, (event) => services.events.publishOnce(tenant, event, []));
+          await services.events.deliverDue(tenant);
+        }
       })()
         .catch((err) => app.log.error({ err }, 'Outbox dispatch failed'))
         .finally(() => {
           active = undefined;
         });
-    }, 5_000);
+    }, options.eventPollMs ?? 5_000);
     interval.unref();
     app.addHook('preClose', async () => {
       clearInterval(interval);

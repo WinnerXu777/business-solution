@@ -25,7 +25,7 @@ interface GovernanceOptions {
   verifyIdentity: IdentityVerifier;
   allowedMcpOrigins?: readonly string[];
   restToolsHandledElsewhere?: readonly ToolName[];
-  canReview?: (identity: VerifiedIdentity) => boolean;
+  canReview?: (identity: VerifiedIdentity) => boolean | Promise<boolean>;
 }
 
 export const governanceRoutes: FastifyPluginAsync<GovernanceOptions> = async (app, options) => {
@@ -66,7 +66,7 @@ export const governanceRoutes: FastifyPluginAsync<GovernanceOptions> = async (ap
   const { exportAudit, listUsage, listDeadLetters } = gateway;
   if (options.canReview && exportAudit && listUsage && listDeadLetters) {
     async function preHandler(request: FastifyRequest, reply: FastifyReply) {
-      if (!options.canReview?.(identityOf(request))) {
+      if (!(await options.canReview?.(identityOf(request)))) {
         return reply.code(403).send({ error: 'forbidden' });
       }
     }

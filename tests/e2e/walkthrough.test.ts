@@ -24,6 +24,7 @@ test('the real fixture app runs the milestone 1 walkthrough without live provide
   const fixtures = loadDemoFixtures();
   const [operator, approver, reader, , foreign] = fixtures.grants;
   const app = createApp({
+    BS_FIXTURE_LOGIN: '1',
     FIXTURE_BEARER_BINDINGS: JSON.stringify(
       Object.fromEntries(
         [operator, approver, reader, foreign].map(({ tenantId, actor }) => [

@@ -1,3 +1,4 @@
+import type { EventInput } from '../platform/events.ts';
 import { randomUUID } from 'node:crypto';
 import type { ProviderAdapters } from '@bs/adapters';
 import { MemoryRecordRepository, type RecordRepository } from '@bs/business';
@@ -11,6 +12,7 @@ import {
   type CompleteLlmInput,
   type DemoFixtures,
   type Entitlement,
+  type MessagePreview,
   type ModuleId,
   type ToolCall,
   type ToolName,
@@ -38,6 +40,11 @@ export interface GovernedGatewayOptions {
   fixtures?: DemoFixtures;
   records?: RecordRepository;
   providers?: Partial<ProviderAdapters>;
+  guardContact?: (
+    preview: MessagePreview,
+    purpose: 'collections' | 'marketing',
+    attemptId: string,
+  ) => Promise<boolean>;
   store?: GovernanceStore;
   now?: () => string;
   policyVersion?: () => string;
@@ -51,8 +58,8 @@ export interface GovernedGatewayOptions {
     allows(
       scope: Pick<CallEnvelope, 'tenantId' | 'actor'>,
       permission: GovernancePermission,
-    ): boolean;
-    actors(tenantId: string): CallEnvelope['actor'][];
+    ): boolean | Promise<boolean>;
+    actors(tenantId: string): CallEnvelope['actor'][] | Promise<CallEnvelope['actor'][]>;
   };
 }
 
@@ -92,6 +99,7 @@ export class GovernedGateway implements ToolGateway {
         : undefined,
       records,
       providers: options.providers,
+      guardContact: options.guardContact,
       clock: options.workerClock,
       authorize: async (state, intent) => {
         const {
@@ -99,7 +107,7 @@ export class GovernedGateway implements ToolGateway {
           approvalId,
         } = intent;
         const row = state.rows.approval.get(approvalId);
-        if (!this.canCall(envelope, tool)) return denied('forbidden');
+        if (!(await this.canCall(envelope, tool))) return denied('forbidden');
         if (!row || row.grant.state !== 'consumed' || !(await this.current(row))) {
           if (row) row.grant.state = 'denied';
           return denied('invalid_approval');
@@ -140,6 +148,26 @@ export class GovernedGateway implements ToolGateway {
             state.rows.outbox.get(intent.id)?.billingReservation?.occurredAt ?? now;
           this.meter(state, intent.request, result, intent.id, occurredAt);
         }
+        const job = state.rows.outbox.get(intent.id);
+        let event: EventInput | undefined;
+        if (intent.effect.kind === 'purchase' && result.state === 'ok') {
+          const recordId = intent.effect.order.id;
+          event = {
+            id: 'created-' + recordId, type: 'record.changed', occurredAt: now,
+            data: { recordType: 'purchaseOrder', recordId, change: 'created' },
+          };
+        }
+        if (intent.effect.kind === 'workflow' &&
+          (job?.status === 'completed' || job?.status === 'dead_letter')) {
+          const runId = 'run-' + intent.id;
+          event = {
+            id: 'settled-' + runId, type: 'workflow.run.settled', occurredAt: now,
+            data: { runId, status: result.state === 'ok' ? 'succeeded' : 'failed' },
+          };
+        }
+        if (event && !state.rows.event_outbox.has(event.id)) {
+          state.rows.event_outbox.set(event.id, { event });
+        }
         this.appendAudit(
           state,
           { ...envelope, source: 'worker' },
@@ -168,6 +196,19 @@ export class GovernedGateway implements ToolGateway {
 
   usage() {
     return this.memorySnapshot().flatMap(({ rows }) => [...rows.usage.values()]);
+  }
+
+  async publishEvents(tenantId: string, publish: (event: EventInput) => Promise<unknown>) {
+    const pending = await this.store.transact(tenantId, ({ rows }) =>
+      [...rows.event_outbox.values()].filter(({ published }) => !published)
+        .slice(0, 50).map(({ event }) => event),
+    );
+    for (const event of pending) {
+      await publish(event);
+      await this.store.transact(tenantId, ({ rows }) => {
+        rows.event_outbox.set(event.id, { event, published: true });
+      });
+    }
   }
 
   exportAudit(tenantId: string) {
@@ -324,7 +365,7 @@ export class GovernedGateway implements ToolGateway {
         const approvals = new ApprovalLedger(state.rows.approval);
         const row = approvals.get(id);
         let result;
-        if (!this.allows(snapshot, 'approvals.decide')) {
+        if (!(await this.allows(snapshot, 'approvals.decide'))) {
           result = denied('forbidden');
         } else if (!row || !approvals.canDecide(snapshot, row.grant)) {
           result = denied('invalid_approval');
@@ -349,20 +390,13 @@ export class GovernedGateway implements ToolGateway {
   private async current(row: StoredApproval) {
     const { grant, target } = row;
     const intent = await this.handlers.currentIntent(grant.tenantId, grant.tool, target);
-    return (
-      matchesBinding(row, intent, this.policyVersion(), this.now()) &&
-      this.actors(grant.tenantId).some(
-        (actor) =>
-          actor.id === grant.approverId &&
-          actor.kind === 'person' &&
-          this.allows({ tenantId: grant.tenantId, actor }, 'approvals.decide'),
-      ) &&
-      this.actors(grant.tenantId).some(
-        (actor) =>
-          actor.id === grant.requestedBy &&
-          this.allows({ tenantId: grant.tenantId, actor }, 'actions.request'),
-      )
-    );
+    if (!matchesBinding(row, intent, this.policyVersion(), this.now())) return false;
+    const actors = await this.actors(grant.tenantId);
+    const approver = actors.find(({ id, kind }) => id === grant.approverId && kind === 'person');
+    const requester = actors.find(({ id }) => id === grant.requestedBy);
+    return !!approver && !!requester &&
+      (await this.allows({ tenantId: grant.tenantId, actor: approver }, 'approvals.decide')) &&
+      (await this.allows({ tenantId: grant.tenantId, actor: requester }, 'actions.request'));
   }
 
   private async refresh(row: StoredApproval) {
@@ -388,11 +422,18 @@ export class GovernedGateway implements ToolGateway {
     );
   }
 
-  private canCall(scope: CallEnvelope, tool: ToolName) {
+  private async approverFor(tenantId: string, requesterId: string) {
+    for (const actor of await this.actors(tenantId)) {
+      if (actor.kind === 'person' && actor.id !== requesterId &&
+        await this.allows({ tenantId, actor }, 'approvals.decide')) return actor.id;
+    }
+  }
+
+  private async canCall(scope: CallEnvelope, tool: ToolName) {
     if (reviewTools.has(tool)) return this.allows(scope, 'approvals.decide');
     if (isReadTool(tool)) return this.allows(scope, 'records.read');
     return (
-      this.allows(scope, 'actions.request') ||
+      (await this.allows(scope, 'actions.request')) ||
       (reviewEvidenceTools.has(tool) && this.allows(scope, 'approvals.decide'))
     );
   }
@@ -533,7 +574,7 @@ export class GovernedGateway implements ToolGateway {
         let dispatch = false;
         let result: ToolResult;
         let llmBinding: { providerId: string; bindingVersion: number } | undefined;
-        if (!this.canCall(envelope, tool)) {
+        if (!(await this.canCall(envelope, tool))) {
           result = denied('forbidden');
         } else if (cached) {
           if (cached.fingerprint !== fingerprint) {
@@ -579,12 +620,7 @@ export class GovernedGateway implements ToolGateway {
                 actionId,
                 policyVersion,
                 now: occurredAt,
-                approverId: this.actors(tenantId).find(
-                  (candidate) =>
-                    candidate.kind === 'person' &&
-                    candidate.id !== actor.id &&
-                    this.allows({ tenantId, actor: candidate }, 'approvals.decide'),
-                )?.id,
+                approverId: await this.approverFor(tenantId, actor.id),
                 complete: (input) =>
                   this.complete(state, envelope, actionId, occurredAt, input, tool, (binding) => {
                     llmBinding = binding;

@@ -1,4 +1,4 @@
-﻿import { defineConfig } from 'vite';
+import { defineConfig } from 'vite';
 
 const target =
   process.env.VITE_API_PROXY_TARGET ?? 'http://127.0.0.1:' + (process.env.API_PORT ?? '3000');
@@ -13,6 +13,9 @@ export default defineConfig({
       '/mcp': target,
       '/connectors': target,
       '/llm': target,
+      '/channels': target,
+      '/workflow-builder': target,
+      '/ops': target,
     },
   },
 });

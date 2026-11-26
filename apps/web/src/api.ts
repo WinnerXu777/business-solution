@@ -34,8 +34,9 @@ export function createAutomationClient(baseUrl: string, token: string) {
   async function request<Result>(path: string, body?: object): Promise<Result> {
     const response = await fetch(baseUrl.replace(/\/+$/, '') + '/automation' + path, {
       method: body ? 'POST' : 'GET',
+      credentials: 'same-origin',
       headers: {
-        Authorization: 'Bearer ' + token,
+        ...(token && { Authorization: 'Bearer ' + token }),
         ...(body
           ? { 'Content-Type': 'application/json', 'Idempotency-Key': crypto.randomUUID() }
           : {}),

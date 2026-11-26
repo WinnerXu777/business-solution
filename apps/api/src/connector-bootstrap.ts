@@ -127,9 +127,9 @@ export function fixtureConnectors(
     const identity = await resolveIdentity(request);
     if (!identity) throw new ConnectorError('auth_required');
     const { directory } = services();
-    const admin = directory.allows(identity, 'settings.manage');
-    const operator = directory.allows(identity, 'actions.request');
-    const read = directory.allows(identity, 'records.read');
+    const admin = await directory.allows(identity, 'settings.manage');
+    const operator = await directory.allows(identity, 'actions.request');
+    const read = await directory.allows(identity, 'records.read');
     if (permission === 'connectors:read' ? !read : !admin && !operator)
       throw new ConnectorError('permission_denied');
     return { tenantId: identity.tenantId, actorId: identity.actor.id };
