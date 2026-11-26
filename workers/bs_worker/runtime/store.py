@@ -27,6 +27,10 @@ class BotRun:
     resume_value: dict | None = None
     cancelled: bool = False
 
+    @property
+    def session_id(self) -> str | None:
+        return self.initial.get("chat", {}).get("sessionId")
+
 
 class BotStore(Protocol):
     """Durable implementations lease a run and use a tenant-bound saver and journal."""
@@ -35,6 +39,7 @@ class BotStore(Protocol):
     def lease(self, tenant_id: str, run_id: str) -> ContextManager: ...
     def load(self, tenant_id: str, run_id: str) -> BotRun | None: ...
     def save(self, tenant_id: str, run: BotRun) -> None: ...
+    def session(self, tenant_id: str, actor: dict, session_id: str) -> list[BotRun]: ...
     def request_cancel(self, tenant_id: str, run_id: str) -> None: ...
     def cancellation_requested(self, tenant_id: str, run_id: str) -> bool: ...
 
@@ -74,6 +79,13 @@ class MemoryBotStore:
     def request_cancel(self, tenant_id: str, run_id: str) -> None:
         with self._lock:
             self._cancellations.add((tenant_id, run_id))
+
+    def session(self, tenant_id, actor, session_id):
+        with self._lock:
+            return [
+                deepcopy(run) for (tenant, _), run in self._runs.items()
+                if tenant == tenant_id and run.envelope["actor"] == actor and run.session_id == session_id
+            ]
 
     def cancellation_requested(self, tenant_id: str, run_id: str) -> bool:
         with self._lock:

@@ -22,7 +22,6 @@ type Receipt = { conversationId: string; duplicate: boolean };
 export class Inbound {
   private readonly conversations: Conversations;
   private readonly consent: (event: ConsentEvent) => void | Promise<void>;
-  private readonly pending = new Map<string, Promise<Conversation>>();
 
   constructor(
     conversations: Conversations,
@@ -59,24 +58,17 @@ export class Inbound {
     });
   }
 
-  private async ingest(
+  private ingest(
     tenantId: string,
     channel: 'email' | 'sms',
     id: string,
     accept: () => Conversation | Promise<Conversation>,
   ): Promise<Receipt> {
-    const key = JSON.stringify([tenantId, channel, id]);
-    const prior = this.conversations.lookupInbound(tenantId, channel, id);
-    if (prior) return { conversationId: prior.conversationId, duplicate: true };
-    const pending = this.pending.get(key);
-    if (pending) return { conversationId: (await pending).conversationId, duplicate: true };
-    const work = Promise.resolve().then(accept);
-    this.pending.set(key, work);
-    try {
-      return { conversationId: (await work).conversationId, duplicate: false };
-    } finally {
-      this.pending.delete(key);
-    }
+    return this.conversations.withReceipt(tenantId, channel, id, async () => {
+      const prior = this.conversations.lookupInbound(tenantId, channel, id);
+      if (prior) return { conversationId: prior.conversationId, duplicate: true };
+      return { conversationId: (await accept()).conversationId, duplicate: false };
+    });
   }
 
   private add(
@@ -88,10 +80,14 @@ export class Inbound {
     prior?: Conversation,
   ) {
     const customer = { id: metadata.from, role: 'customer' } as const;
-    const conversation =
-      prior ??
-      this.conversations.open(tenantId, metadata.channel, customer.id, { queueId, thread });
-    this.conversations.post(conversation, customer, text, metadata);
-    return conversation;
+    if (!prior) {
+      return this.conversations.open(tenantId, metadata.channel, customer.id, {
+        queueId,
+        thread,
+        firstMessage: { text, metadata },
+      });
+    }
+    this.conversations.post(prior, customer, text, metadata);
+    return prior;
   }
 }

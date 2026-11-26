@@ -21,6 +21,7 @@ import {
 } from '../../../../packages/adapters/src/llm/index.ts';
 import { createWorker, type ApprovalMaterial } from './worker.ts';
 import { registerRuntimeRoutes, type RuntimeCapability } from './runtime-routes.ts';
+import type { OnSettledTurn } from '../channels/settled.ts';
 
 type Identity = { tenantId: string; actor: Actor };
 type Options = {
@@ -31,6 +32,8 @@ type Options = {
     approvalId: string,
   ) => Approval | Denied | Promise<Approval | Denied>;
   python?: string;
+  workerModule?: string;
+  onSettledTurn?: OnSettledTurn;
   authorizeRuntime?: (
     scope: CallEnvelope,
     capability: RuntimeCapability,
@@ -89,8 +92,11 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
     options.authorizeRuntime ??
     ((_scope: CallEnvelope, capability: RuntimeCapability) =>
       capability === 'bot' || capability === 'workflow');
-  const worker = createWorker(gateway, options.python, (call) =>
-    authorize(call.envelope, call.envelope.source === 'workflow' ? 'workflow' : 'bot'),
+  const worker = createWorker(
+    gateway,
+    options.python,
+    (call) => authorize(call.envelope, call.envelope.source === 'workflow' ? 'workflow' : 'bot'),
+    options.workerModule,
   );
   app.addHook('onClose', async () => worker.close());
 
@@ -193,27 +199,49 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
       const proposal = router.propose(input);
       turn = {
         fingerprint,
-        reply: worker.invoke({ kind: 'chat', threadId, envelope: scope, chat: input, proposal }),
+        reply: worker
+          .invoke({ kind: 'chat', threadId, envelope: scope, chat: input, proposal })
+          .then(async (answer) => {
+            if (!answer.pending) await reportTurn(answer.result);
+            return answer;
+          })
+          .catch((error) => {
+            chats.delete(threadId);
+            throw error;
+          }),
       };
       chats.set(threadId, turn);
     }
     const answer = await turn.reply;
     if (answer.pending) {
       const approvalId = answer.pending.approval.id;
-      addApproval(
-        answer.pending,
-        async (decision) =>
-          (
-            await worker.invoke({
-              kind: 'resume',
-              threadId,
-              approvalId,
-              envelope: { ...decision, idempotencyKey: approvalId + ':approve' },
-            })
-          ).result,
-      );
+      addApproval(answer.pending, async (decision) => {
+        const resumed = await worker.invoke({
+          kind: 'resume',
+          threadId,
+          approvalId,
+          envelope: { ...decision, idempotencyKey: approvalId + ':approve' },
+        });
+        if (!resumed.pending) await reportTurn(resumed.result);
+        return resumed.result;
+      });
     }
     return answer.result;
+
+    async function reportTurn(result: ToolResult) {
+      try {
+        await options.onSettledTurn?.({
+          tenantId: scope.tenantId,
+          conversationId: input.sessionId,
+          turnId: threadId,
+          channel: scope.source === 'browser_voice' ? 'voice' : 'web',
+          outcome: result.state,
+          audioSeconds: null,
+        });
+      } catch (error) {
+        app.log.error({ err: error, turnId: threadId }, 'Automation turn outcome callback failed');
+      }
+    }
   }
 
   function chatInput(
@@ -246,6 +274,7 @@ export async function registerAutomation(app: FastifyInstance, options: Options)
     addApproval,
     chatInput,
     propose: router.propose,
+    onSettledTurn: options.onSettledTurn,
   });
 
   get<{ orderId: string }>('/orders/:orderId', ({ orderId }, scope) => {

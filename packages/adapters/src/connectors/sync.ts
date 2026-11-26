@@ -1,7 +1,6 @@
 import { ConnectorLifecycle } from './lifecycle.ts';
 import {
   ConnectorError,
-  SerialQueue,
   canonical,
   compareText,
   keyOf,
@@ -50,6 +49,12 @@ interface Dataset {
   report: ReconciliationReport | null;
   syncedAt: string | null;
 }
+
+type StoredDataset = Omit<Dataset, 'records' | 'absent' | 'conflicts'> & {
+  records: [string, CachedRecord][];
+  absent: string[];
+  conflicts: [string, { key: RecordKey; updatedAt: number }][];
+};
 
 function identity(key: RecordKey) {
   return keyOf(key.recordClass, key.externalId);
@@ -128,8 +133,6 @@ function sortKeys(keys: RecordKey[]) {
 }
 
 export class ConnectorSync {
-  private readonly datasets = new Map<string, Dataset>();
-  private readonly triggers = new SerialQueue();
   private readonly lifecycle: ConnectorLifecycle;
   private readonly clock: Clock;
 
@@ -161,7 +164,7 @@ export class ConnectorSync {
   }
 
   importSnapshot(ref: BindingRef) {
-    return this.triggers.run(this.datasetKey(ref), () =>
+    return this.lifecycle.repository.lease(ref.tenantId, this.datasetKey(ref), () =>
       this.lifecycle.withActive(ref, 'snapshot', async ({ connector, context }) => {
         const snapshot = await connector.snapshot(context);
         this.validateCheckpoint(snapshot.checkpoint);
@@ -174,7 +177,7 @@ export class ConnectorSync {
           snapshot.checkpoint,
           true,
         );
-        this.datasets.set(this.datasetKey(ref), next);
+        this.save(ref, next);
         return structuredClone(next.report!);
       }),
     );
@@ -184,7 +187,7 @@ export class ConnectorSync {
     if (!Number.isSafeInteger(maxPages) || maxPages < 1 || maxPages > 100) {
       throw new ConnectorError('validation_failed');
     }
-    return this.triggers.run(this.datasetKey(ref), async () => {
+    return this.lifecycle.repository.lease(ref.tenantId, this.datasetKey(ref), async () => {
       const cursors = new Set<string | null>();
       const added: RecordKey[] = [];
       const changed: RecordKey[] = [];
@@ -218,7 +221,7 @@ export class ConnectorSync {
             added.push(...report.added);
             changed.push(...report.changed);
             next.report = this.sortedReport({ ...report, added, changed });
-            this.datasets.set(this.datasetKey(ref), next);
+            this.save(ref, next);
             return page.hasMore;
           },
         );
@@ -230,30 +233,32 @@ export class ConnectorSync {
 
   /** Event payloads specify which record to hydrate. A null read leaves the prior record intact. */
   hydrate(ref: BindingRef, key: RecordKey): Promise<void> {
-    return this.lifecycle.withActive(ref, 'read', async ({ connector, context }) => {
-      const supported = connector.manifest.webhook;
-      if (!supported || !supported.recordClasses.includes(key.recordClass)) {
-        throw new ConnectorError('unsupported');
-      }
-      const record = await connector.read(context, key);
-      if (!record) return;
-      if (identity(record) !== identity(key)) throw new ConnectorError('validation_failed');
-      const previous = this.dataset(ref);
-      const next = this.merge(
-        previous,
-        connector.manifest,
-        context,
-        [record],
-        previous.checkpoint,
-        false,
-      );
-      this.datasets.set(this.datasetKey(ref), {
-        ...next,
-        report: previous.report,
-        syncedAt: previous.syncedAt,
-      });
-      if (next.conflicts.has(identity(key))) throw new ConnectorError('conflict');
-    });
+    return this.lifecycle.repository.lease(ref.tenantId, this.datasetKey(ref), () =>
+      this.lifecycle.withActive(ref, 'read', async ({ connector, context }) => {
+        const supported = connector.manifest.webhook;
+        if (!supported || !supported.recordClasses.includes(key.recordClass)) {
+          throw new ConnectorError('unsupported');
+        }
+        const record = await connector.read(context, key);
+        if (!record) return;
+        if (identity(record) !== identity(key)) throw new ConnectorError('validation_failed');
+        const previous = this.dataset(ref);
+        const next = this.merge(
+          previous,
+          connector.manifest,
+          context,
+          [record],
+          previous.checkpoint,
+          false,
+        );
+        this.save(ref, {
+          ...next,
+          report: previous.report,
+          syncedAt: previous.syncedAt,
+        });
+        if (next.conflicts.has(identity(key))) throw new ConnectorError('conflict');
+      }),
+    );
   }
 
   compareShadow(primary: BindingRef, candidate: BindingRef, mappings: readonly ShadowMapping[]) {
@@ -445,19 +450,39 @@ export class ConnectorSync {
   }
 
   private datasetKey(ref: BindingRef) {
-    return keyOf(ref.tenantId, ref.connectionId);
+    return keyOf('sync', ref.connectionId);
+  }
+
+  private save(ref: BindingRef, dataset: Dataset) {
+    const body: StoredDataset = {
+      ...dataset,
+      records: [...dataset.records],
+      absent: [...dataset.absent],
+      conflicts: [...dataset.conflicts],
+    };
+    this.lifecycle.repository.put(ref.tenantId, 'sync', ref.connectionId, body);
   }
 
   private dataset(ref: BindingRef): Dataset {
-    return (
-      this.datasets.get(this.datasetKey(ref)) ?? {
-        records: new Map(),
-        absent: new Set(),
-        conflicts: new Map(),
-        checkpoint: null,
-        report: null,
-        syncedAt: null,
-      }
+    const body = this.lifecycle.repository.get<StoredDataset>(
+      ref.tenantId,
+      'sync',
+      ref.connectionId,
     );
+    return body
+      ? {
+          ...body,
+          records: new Map(body.records),
+          absent: new Set(body.absent),
+          conflicts: new Map(body.conflicts),
+        }
+      : {
+          records: new Map(),
+          absent: new Set(),
+          conflicts: new Map(),
+          checkpoint: null,
+          report: null,
+          syncedAt: null,
+        };
   }
 }

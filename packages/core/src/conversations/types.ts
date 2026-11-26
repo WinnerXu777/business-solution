@@ -3,6 +3,14 @@ export type State = 'bot' | 'queued' | 'assigned' | 'resolved';
 export type Role = 'customer' | 'bot' | 'staff';
 export type Participant = { id: string; role: Role };
 export type Scope = { tenantId: string; conversationId: string };
+export type CallRecord = Scope & {
+  callId: string;
+  startedAt: number;
+  answeredAt?: number;
+  endedAt?: number;
+  transfers: { queueId: string; at: number }[];
+  digits: { digit: string; at: number }[];
+};
 export type Queue = { id: string; skills: string[]; slaMs: number };
 export type Staff = { id: string; available: boolean; skills: string[] };
 

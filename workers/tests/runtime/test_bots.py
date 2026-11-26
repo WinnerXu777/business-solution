@@ -6,16 +6,28 @@ from threading import Event
 from workers.bs_worker.chat.gateway import fake_gateway_stdio
 from workers.bs_worker.chat.graph import CHAT
 from workers.bs_worker.runtime.bots import BotRegistry, BotRuntime, RunConflict
+from workers.bs_worker.runtime.postgres import PostgresBotStore
 from workers.bs_worker.runtime.store import MemoryBotStore
 from workers.tests.automation.test_worker import chat, envelope
+from workers.tests.runtime.fake_postgres import FakeRuntimeExecutor
 
 
 class BotRuntimeTests(unittest.TestCase):
     def test_new_runtime_resumes_langgraph_checkpoint_with_no_repeated_tools(self):
+        for kind, store in (("memory", MemoryBotStore), ("postgres", self.postgres_factory())):
+            with self.subTest(kind=kind):
+                self.check_resume_contract(store)
+
+    @staticmethod
+    def postgres_factory():
+        executor = FakeRuntimeExecutor()
+        return lambda: PostgresBotStore(executor)
+
+    def check_resume_contract(self, make_store):
         state = chat("draft", "Draft pr-001", {
             "tool": "purchase.order.draft", "input": {"requestId": "pr-001"},
         })
-        store = MemoryBotStore()
+        store = make_store()
         registry = BotRegistry(CHAT)
         calls = []
         with fake_gateway_stdio() as fixture:
@@ -31,6 +43,8 @@ class BotRuntimeTests(unittest.TestCase):
             })
             self.assertIsNotNone(checkpoint)
             del first
+            if isinstance(store, PostgresBotStore):
+                store = make_store()
             restarted = BotRuntime(registry, store, gateway)
             approval_id = run.pending["approval"]["id"]
             for stranger in [
@@ -57,6 +71,41 @@ class BotRuntimeTests(unittest.TestCase):
             self.assertEqual(restarted.start("draft", CHAT.id, 1, state["envelope"], state).status, "completed")
             with self.assertRaises(RunConflict):
                 restarted.start("draft", CHAT.id, 1, state["envelope"], {**state, "proposal": None})
+
+    def test_process_loss_after_graph_checkpoint_replays_reply_and_session(self):
+        for kind, store in (("memory", MemoryBotStore()), ("postgres", self.postgres_factory()())):
+            with self.subTest(kind=kind), fake_gateway_stdio() as fixture:
+                inputs = chat("fictional-session", "Check ord-001", None)
+                scope = inputs["envelope"]
+                registry = BotRegistry(CHAT)
+                calls = []
+
+                def gateway(tool, scope, inputs):
+                    calls.append(tool)
+                    return fixture(tool, scope, inputs)
+
+                class InterruptedHost(BotRuntime):
+                    def _finish(self, *_):
+                        raise SystemExit(42)
+
+                with self.assertRaises(SystemExit):
+                    InterruptedHost(registry, store, gateway).start("first", CHAT.id, 1, scope, inputs)
+                before = store.load(scope["tenantId"], "first")
+                self.assertEqual(before.status, "running")
+                cursor = before.events[-1]["id"]
+                if isinstance(store, PostgresBotStore):
+                    store = PostgresBotStore(store.executor)
+                runtime = BotRuntime(registry, store, gateway)
+                recovered = runtime.recover("first", scope)
+                self.assertEqual(recovered.status, "completed")
+                self.assertEqual(calls, ["llm.complete"])
+                history = list(runtime.stream("first", scope, cursor))
+                self.assertEqual([event["kind"] for event in history], ["reply_delta", "settled"])
+                self.assertEqual(history[0]["delta"], recovered.result["output"]["reply"])
+                runtime.start("second", CHAT.id, 1, scope, inputs)
+                turns = store.session(scope["tenantId"], scope["actor"], recovered.session_id)
+                self.assertEqual([turn.id for turn in turns], ["first", "second"])
+                self.assertEqual(store.session("tenant-spoolharbour", scope["actor"], recovered.session_id), [])
 
     def test_action_time_and_allowlist_bound_dispatch(self):
         state = chat("budget", "Check ord-001", {

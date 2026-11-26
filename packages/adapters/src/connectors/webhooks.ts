@@ -2,7 +2,6 @@ import { createHmac, timingSafeEqual } from 'node:crypto';
 import { ConnectorLifecycle } from './lifecycle.ts';
 import {
   ConnectorError,
-  SerialQueue,
   keyOf,
   type BindingRef,
   type Clock,
@@ -39,11 +38,13 @@ export function signWebhook(secret: string, timestamp: string, body: Buffer) {
   return createHmac('sha256', secret).update(timestamp).update('.').update(body).digest('hex');
 }
 
+type WebhookState = {
+  seen: string[];
+  highWater: [string, number][];
+  deadLetters: DeadLetter[];
+};
+
 export class WebhookIngestor {
-  private readonly queue = new SerialQueue();
-  private readonly seen = new Map<string, Set<string>>();
-  private readonly highWater = new Map<string, number>();
-  private readonly deadLetters: DeadLetter[] = [];
   private readonly lifecycle: ConnectorLifecycle;
   private readonly secrets: WebhookSecretStore;
   private readonly apply: (ref: BindingRef, event: WebhookEvent) => Promise<void>;
@@ -74,7 +75,8 @@ export class WebhookIngestor {
     const receivedAt = this.clock();
     const secret = await this.secrets.get(ref);
     this.verify(delivery, secret, receivedAt);
-    return this.queue.run(keyOf(ref.tenantId, ref.connectionId), async () => {
+    const repository = this.lifecycle.repository;
+    return repository.lease(ref.tenantId, keyOf('webhook', ref.connectionId), async () => {
       const binding = this.lifecycle.get(ref);
       const manifest = this.lifecycle.manifest(ref);
       if (!manifest.webhook) throw new ConnectorError('unsupported');
@@ -84,38 +86,49 @@ export class WebhookIngestor {
         throw new ConnectorError('unsupported');
       }
       if (binding.status !== 'active') throw new ConnectorError('auth_required');
-      const feed = keyOf(ref.tenantId, ref.connectionId, binding.accountId);
-      const seen = this.seen.get(feed) ?? new Set<string>();
-      if (seen.has(event.eventId)) return { status: 'duplicate' };
-      seen.add(event.eventId);
-      this.seen.set(feed, seen);
-      const entity = keyOf(feed, event.recordClass, event.externalId);
-      const previous = this.highWater.get(entity);
-      if (previous !== undefined && event.sequence <= previous) return { status: 'out_of_order' };
-      try {
-        await this.apply(ref, event);
-        this.highWater.set(entity, event.sequence);
-        return { status: 'accepted' };
-      } catch (error) {
-        this.deadLetters.push({
-          tenantId: ref.tenantId,
-          connectionId: ref.connectionId,
-          eventId: event.eventId,
-          recordClass: event.recordClass,
-          externalId: event.externalId,
-          receivedAt: new Date(receivedAt).toISOString(),
-          reason: error instanceof ConnectorError ? error.code : 'provider_unavailable',
-        });
-        return { status: 'dead_lettered' };
+      const state = this.state(ref);
+      if (state.seen.includes(event.eventId)) return { status: 'duplicate' };
+      state.seen.push(event.eventId);
+      const entity = keyOf(event.recordClass, event.externalId);
+      const highWater = new Map(state.highWater);
+      const previous = highWater.get(entity);
+      let status: 'accepted' | 'out_of_order' | 'dead_lettered' = 'out_of_order';
+      if (previous === undefined || event.sequence > previous) {
+        try {
+          await this.apply(ref, event);
+          highWater.set(entity, event.sequence);
+          state.highWater = [...highWater];
+          status = 'accepted';
+        } catch (error) {
+          state.deadLetters.push({
+            ...ref,
+            eventId: event.eventId,
+            recordClass: event.recordClass,
+            externalId: event.externalId,
+            receivedAt: new Date(receivedAt).toISOString(),
+            reason: error instanceof ConnectorError ? error.code : 'provider_unavailable',
+          });
+          status = 'dead_lettered';
+        }
       }
+      repository.put(ref.tenantId, 'webhook', ref.connectionId, state);
+      return { status };
     });
   }
 
   listDeadLetters(ref: BindingRef): DeadLetter[] {
     this.lifecycle.get(ref);
-    return this.deadLetters
-      .filter((item) => item.tenantId === ref.tenantId && item.connectionId === ref.connectionId)
-      .map((item) => ({ ...item }));
+    return this.state(ref).deadLetters;
+  }
+
+  private state(ref: BindingRef): WebhookState {
+    return (
+      this.lifecycle.repository.get<WebhookState>(ref.tenantId, 'webhook', ref.connectionId) ?? {
+        seen: [],
+        highWater: [],
+        deadLetters: [],
+      }
+    );
   }
 
   private verify(delivery: WebhookDelivery, secret: string | undefined, now: number) {

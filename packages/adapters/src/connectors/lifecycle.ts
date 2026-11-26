@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { CredentialStore, OAuthPkce, OAuthSubject } from './auth.ts';
+import { MemoryConnectorRepository, type ConnectorRepository } from './repository.ts';
 import {
   ConnectorError,
-  SerialQueue,
   keyOf,
   type BindingRef,
   type Clock,
@@ -33,12 +33,11 @@ interface ActiveConnector {
   context: ConnectorContext;
 }
 
+type StoredInstallation = { binding: Installation; ownsAuthority: boolean };
+
 export class ConnectorLifecycle {
   private readonly catalog = new Map<string, ConnectorRegistration>();
-  private readonly bindings = new Map<string, Installation>();
-  private readonly connections = new Map<string, BindingRef>();
-  private readonly owners = new Set<string>();
-  private readonly queue = new SerialQueue();
+  readonly repository: ConnectorRepository;
   private readonly windows = new Map<string, { startsAt: number; used: number }>();
   private readonly store: CredentialStore;
   private readonly clock: Clock;
@@ -47,9 +46,11 @@ export class ConnectorLifecycle {
     registrations: readonly ConnectorRegistration[],
     store: CredentialStore,
     clock: Clock = Date.now,
+    repository: ConnectorRepository = new MemoryConnectorRepository(),
   ) {
     this.store = store;
     this.clock = clock;
+    this.repository = repository;
     for (const registration of registrations) {
       const manifest = registration.connector.manifest;
       const { requests, windowMs } = manifest.rateLimit;
@@ -106,23 +107,24 @@ export class ConnectorLifecycle {
       mode,
       status: 'installed',
     };
-    this.bindings.set(this.bindingKey(binding), binding);
-    this.connections.set(binding.connectionId, { tenantId, connectionId: binding.connectionId });
+    this.save({ binding, ownsAuthority: false });
     return { ...binding };
   }
 
   resolveConnection(connectionId: string): BindingRef {
-    const ref = this.connections.get(connectionId);
+    const ref = this.repository.resolveConnection(connectionId);
     if (!ref) throw new ConnectorError('not_found');
     return { ...ref };
   }
 
   get(ref: BindingRef): Installation {
-    return { ...this.binding(ref) };
+    return { ...this.installation(ref).binding };
   }
 
   manifest(ref: BindingRef): ConnectorManifest {
-    return structuredClone(this.registration(this.binding(ref).connectorId).connector.manifest);
+    return structuredClone(
+      this.registration(this.installation(ref).binding.connectorId).connector.manifest,
+    );
   }
 
   startOAuth(subject: OAuthSubject) {
@@ -148,7 +150,7 @@ export class ConnectorLifecycle {
   async completeOAuth(caller: Omit<OAuthSubject, 'connectionId'>, state: string, code: string) {
     for (const { connector, oauth } of this.catalog.values()) {
       const subject = await oauth?.subject(state, caller);
-      if (subject && this.binding(subject).connectorId === connector.manifest.id) {
+      if (subject && this.installation(subject).binding.connectorId === connector.manifest.id) {
         return this.authorizeOAuth(subject, state, code);
       }
     }
@@ -178,25 +180,23 @@ export class ConnectorLifecycle {
   }
 
   activate(ref: BindingRef) {
-    return this.lock(ref, async (binding) => {
+    return this.lock(ref, async (binding, stored) => {
       this.assertStatus(binding, ['verified', 'paused']);
       if (!binding.verifiedAt) throw new ConnectorError('auth_required');
       const { authoritativeFor } = this.registration(binding.connectorId).connector.manifest;
       if (binding.mode === 'primary') {
-        for (const other of this.bindings.values()) {
-          if (
-            other.tenantId !== binding.tenantId ||
-            other === binding ||
-            !this.owners.has(this.bindingKey(other))
-          )
-            continue;
+        for (const { binding: other, ownsAuthority } of this.repository.list<StoredInstallation>(
+          binding.tenantId,
+          'installation',
+        )) {
+          if (other.connectionId === binding.connectionId || !ownsAuthority) continue;
           const manifest = this.registration(other.connectorId).connector.manifest;
           if (
             manifest.authoritativeFor.some((recordClass) => authoritativeFor.includes(recordClass))
           )
             throw new ConnectorError('conflict');
         }
-        this.owners.add(this.bindingKey(binding));
+        stored.ownsAuthority = true;
       }
       binding.status = 'active';
       return { ...binding };
@@ -212,26 +212,27 @@ export class ConnectorLifecycle {
   }
 
   refresh(ref: BindingRef) {
-    return this.lock(ref, async (binding) => {
+    return this.lock(ref, async (binding, stored) => {
       this.assertStatus(binding, ['verified', 'active', 'paused']);
       const oauth = this.registration(binding.connectorId).oauth;
       if (!oauth) throw new ConnectorError('unsupported');
-      await this.refreshCredential(binding, await this.credential(binding));
+      await this.refreshCredential(stored, await this.credential(binding));
       return { ...binding };
     });
   }
 
   revoke(ref: BindingRef) {
-    return this.lock(ref, async (binding) => {
+    return this.lock(ref, async (binding, stored) => {
       if (binding.status === 'revoked') return { ...binding };
       binding.status = 'revoking';
+      this.save(stored);
       const credential = await this.store.get(binding);
       if (credential?.type === 'oauth2-pkce') {
         await this.registration(binding.connectorId).oauth!.revoke(credential);
       }
       await this.store.delete(binding);
       binding.status = 'revoked';
-      this.owners.delete(this.bindingKey(binding));
+      stored.ownsAuthority = false;
       return { ...binding };
     });
   }
@@ -241,7 +242,7 @@ export class ConnectorLifecycle {
     operation: Operation,
     execute: (active: ActiveConnector) => Promise<T>,
   ): Promise<T> {
-    return this.lock(ref, async (binding) => {
+    return this.lock(ref, async (binding, stored) => {
       const allowed: Installation['status'][] = ['active'];
       if (operation === 'reconcile') allowed.push('paused');
       if (!allowed.includes(binding.status) || !binding.verifiedAt)
@@ -255,7 +256,7 @@ export class ConnectorLifecycle {
       let credential = await this.credential(binding);
       if (credential.type === 'oauth2-pkce') {
         if (credential.expiresAt <= this.clock()) {
-          credential = await this.refreshCredential(binding, credential);
+          credential = await this.refreshCredential(stored, credential);
         }
         const granted = credential.scopes;
         if (scopes.some((scope) => !granted.includes(scope))) {
@@ -287,20 +288,20 @@ export class ConnectorLifecycle {
     return credential;
   }
 
-  private async refreshCredential(binding: Installation, credential: Credential) {
+  private async refreshCredential(stored: StoredInstallation, credential: Credential) {
+    const { binding, ownsAuthority } = stored;
     if (credential.type !== 'oauth2-pkce') throw new ConnectorError('unsupported');
     const oauth = this.registration(binding.connectorId).oauth!;
     const refreshed = await oauth.refresh(credential);
     // Restore the usable status only after verifying the rotated credential against the pinned account.
     const previousStatus = binding.status;
-    binding.status =
-      this.owners.has(this.bindingKey(binding)) || previousStatus === 'paused'
-        ? 'paused'
-        : 'authorized';
+    binding.status = ownsAuthority || previousStatus === 'paused' ? 'paused' : 'authorized';
     delete binding.verifiedAt;
+    this.save(stored);
     await this.store.put(binding, refreshed);
     await this.checkAccount(binding, refreshed);
     binding.status = previousStatus;
+    this.save(stored);
     return refreshed;
   }
 
@@ -352,17 +353,33 @@ export class ConnectorLifecycle {
     return registration;
   }
 
-  private bindingKey(ref: BindingRef) {
-    return keyOf(ref.tenantId, ref.connectionId);
+  private installation(ref: BindingRef) {
+    const stored = this.repository.get<StoredInstallation>(
+      ref.tenantId,
+      'installation',
+      ref.connectionId,
+    );
+    if (!stored) throw new ConnectorError('not_found');
+    return stored;
   }
 
-  private binding(ref: BindingRef) {
-    const binding = this.bindings.get(this.bindingKey(ref));
-    if (!binding) throw new ConnectorError('not_found');
-    return binding;
+  private save(stored: StoredInstallation) {
+    const { tenantId, connectionId } = stored.binding;
+    this.repository.put(tenantId, 'installation', connectionId, stored);
   }
 
-  private lock<T>(ref: BindingRef, work: (binding: Installation) => Promise<T>) {
-    return this.queue.run(this.bindingKey(ref), () => work(this.binding(ref)));
+  private lock<T>(
+    ref: BindingRef,
+    work: (binding: Installation, stored: StoredInstallation) => Promise<T>,
+  ) {
+    return this.repository.lease(ref.tenantId, 'lifecycle', async () => {
+      const stored = this.installation(ref);
+      const before = JSON.stringify(stored);
+      try {
+        return await work(stored.binding, stored);
+      } finally {
+        if (JSON.stringify(stored) !== before) this.save(stored);
+      }
+    });
   }
 }

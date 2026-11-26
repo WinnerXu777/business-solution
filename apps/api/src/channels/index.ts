@@ -29,6 +29,7 @@ import {
 import { ChannelBot } from './bot.ts';
 import { Inbound, type ConsentEvent } from './inbound.ts';
 import { cursor, sendEvents } from './stream.ts';
+import type { OnSettledTurn } from './settled.ts';
 import { VoiceCall, type VoiceOptions } from './voice.ts';
 
 type StaffIdentity = { tenantId: string; staffId: string };
@@ -49,6 +50,7 @@ export type ChannelsOptions = {
   consent: (event: ConsentEvent) => void | Promise<void>;
   model: BotModel;
   voice?: VoiceOptions;
+  onSettledTurn?: OnSettledTurn;
   now?: () => number;
   slaPollMs?: number;
 };
@@ -128,7 +130,13 @@ export const channelsPlugin: FastifyPluginAsync<ChannelsOptions> = async (app, o
   }
 
   const sla = setInterval(() => {
-    conversations.checkSla();
+    for (const tenantId of tenants.keys()) {
+      try {
+        conversations.checkSla(tenantId);
+      } catch (error) {
+        app.log.error({ err: error, tenantId }, 'Conversation SLA scan failed');
+      }
+    }
     limits.sweep();
   }, options.slaPollMs ?? 1_000).unref();
   app.addHook('preClose', async () => {
@@ -261,10 +269,16 @@ export const channelsPlugin: FastifyPluginAsync<ChannelsOptions> = async (app, o
     const before = conversations.get(scope);
     if (before.state === 'bot') {
       turns.add(id);
+      let outcome = 'failed';
       try {
         const deadline = AbortSignal.timeout(10_000);
-        await bot.reply(scope, metadata, AbortSignal.any([shutdown.signal, deadline]));
+        const response = await bot.reply(
+          scope,
+          metadata,
+          AbortSignal.any([shutdown.signal, deadline]),
+        );
         deadline.throwIfAborted();
+        outcome = response ? 'completed' : 'cancelled';
       } catch {
         const current = conversations.get(scope);
         if (
@@ -276,6 +290,18 @@ export const channelsPlugin: FastifyPluginAsync<ChannelsOptions> = async (app, o
         }
       } finally {
         turns.delete(id);
+        try {
+          await options.onSettledTurn?.({
+            tenantId: scope.tenantId,
+            conversationId: id,
+            turnId: message.id,
+            channel: 'web',
+            outcome,
+            audioSeconds: null,
+          });
+        } catch (error) {
+          app.log.error({ err: error, turnId: message.id }, 'Widget turn outcome callback failed');
+        }
       }
     }
     return reply.code(201).send({ messageId: message.id });
@@ -372,6 +398,8 @@ export const channelsPlugin: FastifyPluginAsync<ChannelsOptions> = async (app, o
       conversations,
       bot,
       now,
+      options.onSettledTurn,
+      (error) => app.log.error({ err: error }, 'Voice record or turn outcome write failed'),
     );
     calls.set(scope.conversationId, call);
     return reply.code(201).send({
@@ -448,7 +476,7 @@ export const channelsPlugin: FastifyPluginAsync<ChannelsOptions> = async (app, o
       ...summary(conversation),
       participants: conversation.participants,
       transcript: conversation.messages,
-      call: conversation.channel === 'voice' ? calls.get(scope.conversationId)?.record : undefined,
+      call: conversation.channel === 'voice' ? conversations.callForConversation(scope) : undefined,
     };
   });
 

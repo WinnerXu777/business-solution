@@ -11,11 +11,13 @@ import type {
 } from '../../../../packages/adapters/src/voice/peer.ts';
 import {
   ConversationError,
+  type CallRecord,
   type Conversations,
   type Participant,
   type Scope,
 } from '../../../../packages/core/src/conversations/index.ts';
 import type { ChannelBot } from './bot.ts';
+import type { OnSettledTurn } from './settled.ts';
 
 export type VoiceOptions = {
   peer: VoicePeerFactory;
@@ -41,14 +43,7 @@ type Signal = SignalEvent extends infer E
   : never;
 type SignalListener = (event: SignalEvent) => void;
 type CallPhase = 'new' | 'negotiating' | 'active' | 'ended';
-type CallRecord = Scope & {
-  callId: string;
-  startedAt: number;
-  answeredAt?: number;
-  endedAt?: number;
-  transfers: { queueId: string; at: number }[];
-  digits: { digit: string; at: number }[];
-};
+const pcmBytesPerSecond = 16_000 * 2;
 
 export class VoiceCall {
   readonly record: CallRecord;
@@ -65,11 +60,14 @@ export class VoiceCall {
   private readonly earlyIce: (IceCandidate | null)[] = [];
   private readonly timeout: ReturnType<typeof setTimeout>;
   private readonly unsubscribe: () => void;
+  private readonly onSettledTurn?: OnSettledTurn;
+  private readonly onError: (error: unknown) => void;
   private phase: CallPhase = 'new';
   private cursor = 0;
   private responding?: AbortController;
   private lastFinal = -1;
   private playbackPending = false;
+  private inputBytes = 0;
 
   constructor(
     scope: Scope,
@@ -79,6 +77,8 @@ export class VoiceCall {
     conversations: Conversations,
     bot: ChannelBot,
     now: () => number,
+    onSettledTurn?: OnSettledTurn,
+    onError: (error: unknown) => void = () => {},
   ) {
     this.record = {
       tenantId: scope.tenantId,
@@ -94,6 +94,9 @@ export class VoiceCall {
     this.conversations = conversations;
     this.bot = bot;
     this.now = now;
+    this.onSettledTurn = onSettledTurn;
+    this.onError = onError;
+    conversations.saveCall(this.record);
     this.peer = options.peer({
       signal: this.lifetime.signal,
       onIce: (candidate) => {
@@ -119,6 +122,11 @@ export class VoiceCall {
       if (event.state === 'resolved') this.end();
       if (event.state === 'queued' && event.queueId) {
         this.record.transfers.push({ queueId: event.queueId, at: event.at });
+        try {
+          this.conversations.saveCall(this.record);
+        } catch (error) {
+          this.onError(error);
+        }
         this.interrupt();
         this.emit({ type: 'transfer' });
       }
@@ -156,6 +164,7 @@ export class VoiceCall {
       const answer = await this.peer.acceptOffer(sdp);
       if (this.lifetime.signal.aborted) throw new ConversationError('conflict');
       this.record.answeredAt = this.now();
+      this.conversations.saveCall(this.record);
       this.emit({ type: 'answer', sdp: answer });
       this.phase = 'active';
       for (const candidate of this.earlyIce.splice(0)) this.emit({ type: 'ice', candidate });
@@ -177,6 +186,7 @@ export class VoiceCall {
     if (!/^[0-9*#A-D]$/.test(digit)) throw new ConversationError('invalid_input');
     if (this.record.digits.length >= 256) throw new ConversationError('conflict');
     this.record.digits.push({ digit, at: this.now() });
+    this.conversations.saveCall(this.record);
     this.emit({ type: 'dtmf', digit });
     if (digit === '0' && this.conversations.get(this.record).state === 'bot') this.transfer();
   }
@@ -211,7 +221,7 @@ export class VoiceCall {
     const signal = this.lifetime.signal;
     try {
       for await (const transcript of this.options.stt.transcribe({
-        audio: this.peer.audio,
+        audio: this.measuredAudio(),
         sampleRateHz: 16000,
         signal,
       })) {
@@ -224,7 +234,9 @@ export class VoiceCall {
         this.lastFinal = transcript.segment;
         const turn = new AbortController();
         this.responding = turn;
-        void this.respond(transcript, turn);
+        const bytes = this.inputBytes;
+        this.inputBytes = 0;
+        void this.respond(transcript, turn, bytes);
       }
     } catch {
       if (!signal.aborted) {
@@ -234,13 +246,21 @@ export class VoiceCall {
     }
   }
 
-  private async respond(transcript: Transcript, turn: AbortController) {
+  private async *measuredAudio() {
+    for await (const chunk of this.peer.audio) {
+      this.inputBytes += chunk.byteLength;
+      yield chunk;
+    }
+  }
+
+  private async respond(transcript: Transcript, turn: AbortController, bytes: number) {
     const { signal } = turn;
     const metadata = {
       channel: 'voice',
       callId: this.record.callId,
       segment: transcript.segment,
     } as const;
+    let outcome = 'completed';
     try {
       const { reply } = await this.bot.turn(
         this.record,
@@ -249,7 +269,10 @@ export class VoiceCall {
         metadata,
         signal,
       );
-      if (!reply || signal.aborted) return;
+      if (!reply || signal.aborted) {
+        outcome = 'cancelled';
+        return;
+      }
       this.playbackPending = true;
       for await (const chunk of this.options.tts.synthesize({
         text: reply.text,
@@ -259,13 +282,27 @@ export class VoiceCall {
       })) {
         if (signal.aborted) return;
         await this.peer.play(chunk, signal);
+        if (chunk.format === 'pcm_s16le_16000') bytes += chunk.bytes.byteLength;
       }
     } catch {
+      outcome = 'failed';
       if (!signal.aborted) this.emit({ type: 'error', code: 'turn_failed' });
     } finally {
       if (this.responding === turn) {
         this.responding = undefined;
         this.playbackPending = false;
+      }
+      try {
+        await this.onSettledTurn?.({
+          tenantId: this.record.tenantId,
+          conversationId: this.record.conversationId,
+          turnId: this.record.callId + ':' + transcript.segment,
+          channel: 'voice',
+          outcome: signal.aborted ? 'cancelled' : outcome,
+          audioSeconds: bytes / pcmBytesPerSecond,
+        });
+      } catch (error) {
+        this.onError(error);
       }
     }
   }
@@ -284,6 +321,11 @@ export class VoiceCall {
       // The ended state and record must outlive transport teardown.
     }
     this.emit({ type: 'ended' });
+    try {
+      this.conversations.saveCall(this.record);
+    } catch (error) {
+      this.onError(error);
+    }
   }
 
   get ended() {

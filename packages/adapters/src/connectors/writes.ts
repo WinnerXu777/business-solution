@@ -1,7 +1,6 @@
 import { ConnectorLifecycle, type Installation } from './lifecycle.ts';
 import {
   ConnectorError,
-  SerialQueue,
   canonical,
   keyOf,
   stableId,
@@ -24,15 +23,12 @@ export type WriteAuthorizer = (request: {
 }) => Promise<void>;
 
 interface Attempt {
+  connectionId: string;
   material: string;
   resolution: EffectResolution;
 }
 
 export class ConnectorWrites {
-  private readonly manualFreezes = new Set<string>();
-  private readonly unknown = new Map<string, Set<string>>();
-  private readonly attempts = new Map<string, Attempt>();
-  private readonly queue = new SerialQueue();
   private readonly lifecycle: ConnectorLifecycle;
   private readonly authorize: WriteAuthorizer;
 
@@ -42,22 +38,23 @@ export class ConnectorWrites {
   }
 
   setFrozen(tenantId: string, capability: Capability, frozen: boolean) {
-    const key = keyOf(tenantId, capability);
-    if (frozen) this.manualFreezes.add(key);
-    else this.manualFreezes.delete(key);
+    this.lifecycle.repository.put(tenantId, 'writes', keyOf('manual', capability), frozen);
   }
 
   isFrozen(tenantId: string, capability: Capability): boolean {
-    const key = keyOf(tenantId, capability);
-    return this.manualFreezes.has(key) || Boolean(this.unknown.get(key)?.size);
+    return (
+      Boolean(this.lifecycle.repository.get(tenantId, 'writes', keyOf('manual', capability))) ||
+      Object.values(this.attempts(tenantId, capability)).some(
+        ({ resolution }) => resolution.status === 'unknown',
+      )
+    );
   }
 
   write(actor: WriteActor, ref: BindingRef, original: WriteIntent) {
     this.checkTenant(actor, ref);
     const intent = structuredClone(original);
     const { capability } = this.lifecycle.manifest(ref);
-    const key = keyOf(ref.tenantId, capability);
-    return this.queue.run(key, () =>
+    return this.lifecycle.repository.lease(ref.tenantId, keyOf('writes', capability), () =>
       this.lifecycle.withActive(ref, 'write', async ({ binding, connector, context }) => {
         if (!connector.write || !connector.reconcile) throw new ConnectorError('unsupported');
         if (!connector.manifest.authoritativeFor.includes(intent.recordClass)) {
@@ -86,18 +83,20 @@ export class ConnectorWrites {
           binding.accountId,
           intent.idempotencyKey,
         );
-        const attemptKey = this.attemptKey(ref, effectId);
-        const prior = this.attempts.get(attemptKey);
+        const attempts = this.attempts(ref.tenantId, capability);
+        const prior = attempts[effectId];
         if (prior) {
           if (prior.material !== material) throw new ConnectorError('conflict');
           return { ...prior.resolution };
         }
         if (this.isFrozen(ref.tenantId, capability)) throw new ConnectorError('write_frozen');
-        const attempt: Attempt = { material, resolution: { status: 'unknown', effectId } };
-        const holds = this.unknown.get(key) ?? new Set<string>();
-        holds.add(effectId);
-        this.unknown.set(key, holds);
-        this.attempts.set(attemptKey, attempt);
+        const attempt: Attempt = {
+          connectionId: ref.connectionId,
+          material,
+          resolution: { status: 'unknown', effectId },
+        };
+        attempts[effectId] = attempt;
+        this.save(ref.tenantId, capability, attempts);
         try {
           attempt.resolution = normalizeResolution(
             await connector.write(context, { ...intent, effectId }),
@@ -106,7 +105,7 @@ export class ConnectorWrites {
         } catch {
           // Invocation began. A transport failure leaves the effect unresolved.
         }
-        if (attempt.resolution.status !== 'unknown') this.release(key, effectId);
+        this.save(ref.tenantId, capability, attempts);
         return { ...attempt.resolution };
       }),
     );
@@ -114,12 +113,13 @@ export class ConnectorWrites {
 
   reconcile(ref: BindingRef, effectId: string) {
     const { capability } = this.lifecycle.manifest(ref);
-    const key = keyOf(ref.tenantId, capability);
-    return this.queue.run(key, () =>
+    return this.lifecycle.repository.lease(ref.tenantId, keyOf('writes', capability), () =>
       this.lifecycle.withActive(ref, 'reconcile', async ({ connector, context }) => {
         if (!connector.reconcile) throw new ConnectorError('unsupported');
-        const attempt = this.attempts.get(this.attemptKey(ref, effectId));
-        if (!attempt) throw new ConnectorError('not_found');
+        const attempts = this.attempts(ref.tenantId, capability);
+        const attempt = Object.hasOwn(attempts, effectId) ? attempts[effectId] : undefined;
+        if (!attempt || attempt.connectionId !== ref.connectionId)
+          throw new ConnectorError('not_found');
         if (attempt.resolution.status !== 'unknown') return { ...attempt.resolution };
         const providerEffectId = attempt.resolution.providerEffectId;
         const result = normalizeResolution(
@@ -128,7 +128,7 @@ export class ConnectorWrites {
           providerEffectId,
         );
         attempt.resolution = result;
-        if (result.status !== 'unknown') this.release(key, effectId);
+        this.save(ref.tenantId, capability, attempts);
         return { ...result };
       }),
     );
@@ -138,14 +138,14 @@ export class ConnectorWrites {
     if (actor.tenantId !== ref.tenantId || !actor.actorId) throw new ConnectorError('not_found');
   }
 
-  private attemptKey(ref: BindingRef, effectId: string) {
-    return keyOf(ref.tenantId, ref.connectionId, effectId);
+  private attempts(tenantId: string, capability: Capability) {
+    return (
+      this.lifecycle.repository.get<Record<string, Attempt>>(tenantId, 'writes', capability) ?? {}
+    );
   }
 
-  private release(key: string, effectId: string) {
-    const holds = this.unknown.get(key);
-    holds?.delete(effectId);
-    if (holds?.size === 0) this.unknown.delete(key);
+  private save(tenantId: string, capability: Capability, attempts: Record<string, Attempt>) {
+    this.lifecycle.repository.put(tenantId, 'writes', capability, attempts);
   }
 }
 

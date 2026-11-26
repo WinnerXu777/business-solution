@@ -34,6 +34,14 @@ export type BotView = {
   status: string;
   result: ToolResult | null;
   pending: ApprovalMaterial | null;
+  sessionId?: string | null;
+};
+
+type BotSnapshot = {
+  view: BotView;
+  events: BotEvent[];
+  envelope: CallEnvelope;
+  fingerprint?: string | null;
 };
 
 export type WorkflowView = {
@@ -84,7 +92,13 @@ type Commands = {
       maxSeconds: number;
     }[],
   ];
-  'bot-start': [BotStart & { runId: string; botId: string; version: number }, BotView];
+  'bot-start': [
+    BotStart & { runId: string; botId: string; version: number; fingerprint?: string },
+    BotView,
+  ];
+  'bot-inspect': [WorkflowRun & { approvalId?: string }, BotSnapshot];
+  'bot-recover': [WorkflowRun, BotSnapshot];
+  'bot-session': [{ envelope: CallEnvelope; sessionId: string }, BotView[]];
   'bot-resume': [ApprovalDecision & { runId: string }, BotView];
   'bot-cancel': [WorkflowRun, BotView];
   workflow: [
@@ -131,6 +145,7 @@ export function createWorker(
   gateway: ToolGateway,
   python?: string,
   authorize?: (request: ToolCall) => boolean | Promise<boolean>,
+  module = 'workers.bs_worker.chat.stdio',
 ) {
   const interpreter = fileURLToPath(
     new URL(process.platform === 'win32' ? '.venv/Scripts/python.exe' : '.venv/bin/python', repo),
@@ -142,7 +157,7 @@ export function createWorker(
   function start() {
     const child = spawn(
       python ?? process.env.BS_WORKER_PYTHON ?? (existsSync(interpreter) ? interpreter : 'python'),
-      ['-m', 'workers.bs_worker.chat.stdio'],
+      ['-m', module],
       { cwd: repo, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true },
     );
     const lines = createInterface({ input: child.stdout });
@@ -211,7 +226,7 @@ export function createWorker(
     } catch (error) {
       if (!(error instanceof WorkerRejection)) {
         stop();
-        closed = true;
+        session = undefined;
       }
       throw error;
     } finally {

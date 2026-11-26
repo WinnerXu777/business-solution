@@ -11,15 +11,18 @@ import {
 } from '../../../../packages/adapters/src/llm/index.ts';
 import {
   createLimits,
+  MemoryLimitRepository,
   type Binding,
   type Capability,
   type Limits,
+  type LimitRepository,
   type Route,
   type UsageRecord,
 } from './metering.ts';
 import { ApiError, readChat, readEmbeddings, structuredOutput } from './validation.ts';
 
 export type { Binding, Capability, Limits, Route, UsageRecord } from './metering.ts';
+export { PostgresLimitRepository } from './postgres.ts';
 
 type Endpoint = 'chat.completions' | 'embeddings' | 'models';
 type Identity = { tenantId: string };
@@ -43,6 +46,7 @@ export type LlmPluginOptions = {
   emitUsage: (record: UsageRecord) => void | Promise<void>;
   logRequest?: (record: RequestAudit) => void;
   limits?: Limits;
+  limitRepository?: LimitRepository;
   now?: () => number;
   timeoutMs?: number;
 };
@@ -105,7 +109,12 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
   ) {
     throw new Error('Invalid LLM limits');
   }
-  const meter = createLimits({ ...limits }, now);
+  const meter = createLimits(
+    { ...limits },
+    now,
+    options.limitRepository ?? new MemoryLimitRepository(),
+    (options.timeoutMs ?? 30_000) + 60_000,
+  );
   const contexts = new WeakMap<FastifyRequest, Context>();
 
   function authenticate(endpoint: Endpoint) {
@@ -126,7 +135,7 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
         throw new ApiError(401, 'invalid_api_key');
       }
       context.tenantId = identity.tenantId;
-      meter.request(identity.tenantId);
+      await meter.request(identity.tenantId);
     };
   }
 
@@ -159,7 +168,7 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
     return { context, binding };
   }
 
-  function startAttempt<T extends CallInput>(
+  async function startAttempt<T extends CallInput>(
     context: Context,
     capability: Capability,
     binding: Binding,
@@ -179,7 +188,7 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
       throw new ApiError(503, 'meter_unavailable');
     const outputBound =
       'max_completion_tokens' in providerInput ? providerInput.max_completion_tokens : 0;
-    const settle = meter.reserve(context.tenantId!, inputBound + outputBound);
+    const settle = await meter.reserve(context.tenantId!, inputBound + outputBound);
     context.route = route.routeId;
     let actual: Usage | undefined;
     let finalized = false;
@@ -194,8 +203,8 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
       async finish(outcome: UsageRecord['outcome']) {
         if (finalized) return;
         finalized = true;
-        const budgetTokens = settle(actual);
         try {
+          const budgetTokens = await settle(actual);
           await options.emitUsage({
             eventId: context.requestId + '-' + attempt,
             requestId: context.requestId,
@@ -214,7 +223,7 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
             outcome,
           });
         } catch {
-          meter.failMeter(context.tenantId!);
+          await meter.failMeter(context.tenantId!);
           throw new ApiError(503, 'meter_unavailable');
         }
       },
@@ -262,7 +271,7 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
     async (request, reply) => {
       const { input, encoding } = readEmbeddings(request.body);
       const { binding, context } = await route(request, reply, 'embeddings');
-      const call = startAttempt(context, 'embeddings', binding, binding.primary, input, 1);
+      const call = await startAttempt(context, 'embeddings', binding, binding.primary, input, 1);
       let outcome: UsageRecord['outcome'] = 'failed';
       try {
         const result = await binding.primary.adapter.embed!(call.input, context.signal);
@@ -311,7 +320,7 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
       const base = { id: 'chatcmpl-' + context.requestId, created: Math.floor(now() / 1000) };
 
       async function complete(selected: Route, attempt: number) {
-        const call = startAttempt(context, 'llm', binding, selected, input, attempt);
+        const call = await startAttempt(context, 'llm', binding, selected, input, attempt);
         let outcome: UsageRecord['outcome'] = 'failed';
         try {
           const result = await selected.adapter.complete(call.input, context.signal);
@@ -353,7 +362,7 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
       }
 
       async function* events(selected: Route, attempt: number): AsyncGenerator<ChatEvent> {
-        const call = startAttempt(context, 'llm', binding, selected, input, attempt);
+        const call = await startAttempt(context, 'llm', binding, selected, input, attempt);
         const buffered: ChatEvent[] = [];
         let textBytes = 0;
         let hasTools = false;
@@ -432,8 +441,14 @@ export const llmPlugin: FastifyPluginAsync<LlmPluginOptions> = async (app, optio
               });
             } else {
               yield choice({}, event.finishReason);
-              if (includeUsage)
-                yield frame({ ...prefix, choices: [], usage: wireUsage(event.usage) });
+              yield frame({
+                ...prefix,
+                type: 'final',
+                choices: [],
+                route: selected.routeId,
+                bindingVersion: binding.version,
+                usage: wireUsage(event.usage),
+              });
               yield frame('[DONE]');
             }
             item = await iterator.next();

@@ -187,6 +187,9 @@ test('streams OpenAI-compatible SSE, tool calls, and optional usage', async (t) 
   ]);
   assert.equal(chunks[2].choices[0].finish_reason, 'tool_calls');
   assert.deepEqual(chunks[3].choices, []);
+  assert.equal(chunks[3].type, 'final');
+  assert.equal(chunks[3].route, route().routeId);
+  assert.equal(chunks[3].bindingVersion, 'chat-binding-v1');
   assert.deepEqual(chunks[3].usage, { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 });
   assert.equal(chunks[4], '[DONE]');
   assert.equal(usage.length, 1);

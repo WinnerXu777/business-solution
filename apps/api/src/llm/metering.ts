@@ -50,55 +50,102 @@ export type Limits = {
   tokens: number;
 };
 
-type Window = { endsAt: number; requests: number; tokens: number };
+import { randomUUID } from 'node:crypto';
 
-export function createLimits(limits: Limits, now: () => number) {
-  const windows = new Map<string, Window>();
-  const pending = new Map<string, number>();
-  const meterFailures = new Set<string>();
-  let nextSweep = 0;
+export type Reservation = { id: string; amount: number; window: number; expiresAt: number };
+export interface LimitRepository {
+  request(tenantId: string, window: number, cap: number): boolean | Promise<boolean>;
+  reserve(
+    tenantId: string,
+    reservation: Reservation,
+    cap: number,
+    now: number,
+  ): 'reserved' | 'exhausted' | 'blocked' | Promise<'reserved' | 'exhausted' | 'blocked'>;
+  settle(tenantId: string, id: string, window: number, tokens: number): void | Promise<void>;
+  block(tenantId: string): void | Promise<void>;
+}
 
-  function window(tenantId: string) {
-    const time = now();
-    if (time >= nextSweep) {
-      for (const [id, value] of windows) {
-        if (value.endsAt <= time) windows.delete(id);
-      }
-      nextSweep = time + limits.windowMs;
-    }
-    const current = windows.get(tenantId);
-    if (current && current.endsAt > time) return current;
-    const value = { endsAt: time + limits.windowMs, requests: 0, tokens: 0 };
-    windows.set(tenantId, value);
+type Window = { requests: number; tokens: number };
+export class MemoryLimitRepository implements LimitRepository {
+  private readonly windows = new Map<string, Map<number, Window>>();
+  private readonly holds = new Map<string, Map<string, Reservation>>();
+  private readonly blocked = new Set<string>();
+
+  private counter(tenantId: string, window: number) {
+    const tenant = this.windows.get(tenantId) ?? new Map<number, Window>();
+    const value = tenant.get(window) ?? { requests: 0, tokens: 0 };
+    tenant.set(window, value);
+    this.windows.set(tenantId, tenant);
     return value;
   }
 
+  request(tenantId: string, window: number, cap: number) {
+    const counter = this.counter(tenantId, window);
+    if (counter.requests >= cap) return false;
+    counter.requests++;
+    return true;
+  }
+
+  reserve(tenantId: string, reservation: Reservation, cap: number, now: number) {
+    if (this.blocked.has(tenantId)) return 'blocked';
+    const holds = this.holds.get(tenantId) ?? new Map<string, Reservation>();
+    let outstanding = 0;
+    for (const hold of holds.values()) {
+      if (hold.expiresAt > now && hold.window !== reservation.window) outstanding += hold.amount;
+    }
+    const counter = this.counter(tenantId, reservation.window);
+    if (counter.tokens + outstanding + reservation.amount > cap) return 'exhausted';
+    counter.tokens += reservation.amount;
+    holds.set(reservation.id, reservation);
+    this.holds.set(tenantId, holds);
+    return 'reserved';
+  }
+
+  settle(tenantId: string, id: string, window: number, tokens: number) {
+    const holds = this.holds.get(tenantId);
+    const hold = holds?.get(id);
+    if (!hold) return;
+    this.counter(tenantId, hold.window).tokens -= hold.amount;
+    this.counter(tenantId, window).tokens += tokens;
+    holds!.delete(id);
+  }
+
+  block(tenantId: string) {
+    this.blocked.add(tenantId);
+  }
+}
+
+export function createLimits(
+  limits: Limits,
+  now: () => number,
+  repository: LimitRepository,
+  holdMs: number,
+) {
+  const window = (at: number) => at - (at % limits.windowMs);
+  const meterFailures = new Set<string>();
+
   return {
-    request(tenantId: string) {
-      const current = window(tenantId);
-      if (current.requests >= limits.requests) throw new ApiError(429, 'rate_limit_exceeded');
-      current.requests++;
+    async request(tenantId: string) {
+      if (!(await repository.request(tenantId, window(now()), limits.requests)))
+        throw new ApiError(429, 'rate_limit_exceeded');
     },
-    failMeter(tenantId: string) {
+    async failMeter(tenantId: string) {
       meterFailures.add(tenantId);
+      await repository.block(tenantId);
     },
-    reserve(tenantId: string, amount: number) {
+    async reserve(tenantId: string, amount: number) {
       if (meterFailures.has(tenantId)) throw new ApiError(503, 'meter_unavailable');
       if (!Number.isSafeInteger(amount) || amount < 0) {
         throw new ApiError(503, 'meter_unavailable');
       }
-      const current = window(tenantId);
-      const outstanding = pending.get(tenantId) ?? 0;
-      if (amount > limits.tokens - current.tokens - outstanding) {
-        throw new ApiError(429, 'token_budget_exceeded');
-      }
-      pending.set(tenantId, outstanding + amount);
-      return (actual: Usage | undefined) => {
-        const left = (pending.get(tenantId) ?? 0) - amount;
-        if (left) pending.set(tenantId, left);
-        else pending.delete(tenantId);
+      const at = now();
+      const reservation = { id: randomUUID(), amount, window: window(at), expiresAt: at + holdMs };
+      const status = await repository.reserve(tenantId, reservation, limits.tokens, at);
+      if (status === 'blocked') throw new ApiError(503, 'meter_unavailable');
+      if (status === 'exhausted') throw new ApiError(429, 'token_budget_exceeded');
+      return async (actual: Usage | undefined) => {
         const spent = actual ? actual.inputTokens + actual.outputTokens : amount;
-        window(tenantId).tokens += spent;
+        await repository.settle(tenantId, reservation.id, window(now()), spent);
         return spent;
       };
     },

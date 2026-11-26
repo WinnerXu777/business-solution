@@ -33,7 +33,7 @@ def _emit(event: dict) -> None:
 def _bot_view(run) -> dict:
     return {
         "id": run.id, "botId": run.bot_id, "version": run.version,
-        "status": run.status, "result": run.result, "pending": run.pending,
+        "status": run.status, "result": run.result, "pending": run.pending, "sessionId": run.session_id,
     }
 
 
@@ -41,6 +41,13 @@ def _legacy_view(run) -> dict:
     if run.pending:
         return {"result": {"state": "pending_approval", "approval": run.pending["approval"]}, "pending": run.pending}
     return {"result": run.result}
+
+
+def _bot_snapshot(run) -> dict:
+    return {
+        "view": _bot_view(run), "events": run.events, "envelope": run.envelope,
+        "fingerprint": run.initial.get("requestFingerprint"),
+    }
 
 
 def dispatch(command, gateway, bots, workflows):
@@ -51,7 +58,8 @@ def dispatch(command, gateway, bots, workflows):
         run = bots.start(
             command.get("threadId", run_id), command.get("botId", CHAT.id),
             command.get("version", CHAT.version), scope,
-            {"chat": command["chat"], "proposal": command["proposal"]},
+            {"chat": command["chat"], "proposal": command["proposal"],
+             **({"requestFingerprint": command["fingerprint"]} if "fingerprint" in command else {})},
             _emit if kind == "bot-start" else None,
         )
         return _bot_view(run) if kind == "bot-start" else _legacy_view(run)
@@ -63,6 +71,12 @@ def dispatch(command, gateway, bots, workflows):
         return _bot_view(run) if kind == "bot-resume" else _legacy_view(run)
     if kind == "bot-cancel":
         return _bot_view(bots.cancel(run_id, scope, _emit))
+    if kind == "bot-inspect":
+        return _bot_snapshot(bots.inspect(run_id, scope, command.get("approvalId")))
+    if kind == "bot-recover":
+        return _bot_snapshot(bots.recover(run_id, scope, _emit))
+    if kind == "bot-session":
+        return [_bot_view(run) for run in bots.store.session(scope["tenantId"], scope["actor"], command["sessionId"])]
     if kind == "bot-list":
         return bots.registry.list()
     if kind == "workflow":
@@ -88,9 +102,10 @@ def dispatch(command, gateway, bots, workflows):
     raise ValueError("Unknown command")
 
 
-def main(model=None) -> None:
+def main(model=None, *, store=None) -> None:
     gateway = gateway_client(_tool_call)
-    bots = BotRuntime(BotRegistry(NATIVE_CHAT if model else CHAT), MemoryBotStore(), gateway, model=model)
+    bots = BotRuntime(BotRegistry(NATIVE_CHAT if model else CHAT), store if store is not None else MemoryBotStore(),
+                      gateway, model=model)
     workflows = LocalWorkflowRunner(gateway)
     for line in sys.stdin:
         try:

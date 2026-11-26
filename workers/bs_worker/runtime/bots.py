@@ -175,6 +175,24 @@ class BotRuntime:
         run = self._owned_run(run_id, scope)
         yield from (event for event in run.events if event["id"] > after)
 
+    def inspect(self, run_id, scope, approval_id=None):
+        if approval_id is None:
+            return self._owned_run(run_id, scope)
+        run = self.store.load(scope["tenantId"], run_id)
+        approval = run and run.pending and run.pending["approval"]
+        if (
+            not approval or approval["id"] != approval_id
+            or scope["actor"] != {"id": approval["approverId"], "kind": "person"}
+            or approval["requestedBy"] == approval["approverId"]
+        ):
+            raise KeyError(run_id)
+        return run
+
+    def recover(self, run_id, scope, emit=None):
+        with self.store.lease(scope["tenantId"], run_id):
+            run = self._owned_run(run_id, scope)
+            return self._advance(run, emit) if run.status == "running" else run
+
     def _owned_run(self, run_id, scope):
         run = self.store.load(scope["tenantId"], run_id)
         if not run or run.envelope["actor"] != scope["actor"]:
@@ -192,7 +210,19 @@ class BotRuntime:
         run.result = result
         run.pending = None
         run.status = {"ok": "completed"}.get(result["state"], result["state"])
-        self._event(run, emit, "settled", status=run.status)
+        reply = result.get("output", {}).get("reply") if result["state"] == "ok" else None
+        fields = [("settled", {"status": run.status})]
+        if isinstance(reply, str):
+            fields.insert(0, ("reply_delta", {"delta": reply}))
+        updates = [
+            {"id": len(run.events) + index, "kind": kind, "runId": run.id, **data}
+            for index, (kind, data) in enumerate(fields, 1)
+        ]
+        run.events.extend(updates)
+        self.store.save(run.envelope["tenantId"], run)
+        if emit:
+            for event in updates:
+                emit(deepcopy(event))
 
     def _cancel(self, run, emit):
         run.cancelled = True

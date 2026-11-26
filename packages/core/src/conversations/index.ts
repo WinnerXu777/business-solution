@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { ConversationRepository } from './repository.ts';
 import { ConversationError } from './types.ts';
 import type {
+  CallRecord,
   Channel,
   ChannelMetadata,
   Conversation,
@@ -17,6 +18,7 @@ import type {
 
 export * from './types.ts';
 export * from './repository.ts';
+export * from './postgres.ts';
 
 const missing = () => new ConversationError('not_found');
 const conflict = () => new ConversationError('conflict');
@@ -52,7 +54,11 @@ export class Conversations {
     tenantId: string,
     channel: Channel,
     customerId: string,
-    options: { thread?: string; queueId?: string } = {},
+    options: {
+      thread?: string;
+      queueId?: string;
+      firstMessage?: { text: string; metadata: ChannelMetadata };
+    } = {},
   ) {
     if (!tenantId || !customerId) throw invalid();
     const conversation: Conversation = {
@@ -72,6 +78,10 @@ export class Conversations {
     };
     if (options.queueId) this.queue(conversation, options.queueId);
     else this.transition(conversation, 'bot');
+    if (options.firstMessage) {
+      const { text, metadata } = options.firstMessage;
+      this.append(conversation, { id: customerId, role: 'customer' }, text, metadata);
+    }
     this.commit(conversation, 0);
     return conversation;
   }
@@ -96,17 +106,23 @@ export class Conversations {
   }
 
   lookupInbound(tenantId: string, channel: 'email' | 'sms', receiptId: string) {
+    const scope = this.repository.receipt(tenantId, channel, receiptId);
+    if (scope) return this.repository.get(scope);
     return this.repository
       .list(tenantId)
       .find(
-        (item) =>
-          item.channel === channel &&
-          item.messages.some(
-            ({ metadata }) =>
-              (metadata.channel === 'email' && metadata.receiptId === receiptId) ||
-              (metadata.channel === 'sms' && metadata.messageSid === receiptId),
+        (conversation) =>
+          conversation.channel === channel &&
+          conversation.messages.some(({ metadata }) =>
+            metadata.channel === 'email'
+              ? metadata.receiptId === receiptId
+              : metadata.channel === 'sms' && metadata.messageSid === receiptId,
           ),
       );
+  }
+
+  withReceipt<T>(tenantId: string, channel: 'email' | 'sms', id: string, work: () => Promise<T>) {
+    return this.repository.withReceipt(tenantId, JSON.stringify([channel, id]), work);
   }
 
   lookupEmailReference(tenantId: string, thread: string, references: string[]) {
@@ -127,21 +143,40 @@ export class Conversations {
   }
 
   post(scope: Scope, author: Participant, text: string, metadata: ChannelMetadata) {
-    return this.update(scope, (conversation) => {
-      this.authorize(conversation, author);
-      if (metadata.channel !== conversation.channel || !text.trim() || text.length > 32_768)
-        throw invalid();
-      const message: Message = {
-        id: randomUUID(),
-        author: { ...author },
-        text,
-        at: this.now(),
-        metadata: structuredClone(metadata),
-      };
-      conversation.messages.push(message);
-      this.record(conversation, { type: 'message', message });
-      return message;
-    });
+    return this.update(scope, (conversation) => this.append(conversation, author, text, metadata));
+  }
+
+  saveCall(call: CallRecord) {
+    this.repository.saveCall(call);
+  }
+
+  getCall(scope: Scope, callId: string) {
+    return this.repository.getCall(scope, callId);
+  }
+
+  callForConversation(scope: Scope) {
+    return this.repository.callForConversation(scope);
+  }
+
+  private append(
+    conversation: Conversation,
+    author: Participant,
+    text: string,
+    metadata: ChannelMetadata,
+  ) {
+    this.authorize(conversation, author);
+    if (metadata.channel !== conversation.channel || !text.trim() || text.length > 32_768)
+      throw invalid();
+    const message: Message = {
+      id: randomUUID(),
+      author: { ...author },
+      text,
+      at: this.now(),
+      metadata: structuredClone(metadata),
+    };
+    conversation.messages.push(message);
+    this.record(conversation, { type: 'message', message });
+    return message;
   }
 
   activity(scope: Scope, author: Participant, data: { active: boolean } | { messageId: string }) {
@@ -228,11 +263,15 @@ export class Conversations {
     });
   }
 
-  checkSla() {
-    for (const scope of this.repository.due(this.now())) {
+  checkSla(tenantId?: string) {
+    for (const scope of this.repository.due(this.now(), tenantId)) {
       const conversation = this.get(scope);
       const cursor = conversation.events.length;
-      if (this.breach(conversation)) this.commit(conversation, cursor);
+      try {
+        if (this.breach(conversation)) this.commit(conversation, cursor);
+      } catch (error) {
+        if (!(error instanceof ConversationError) || error.code !== 'conflict') throw error;
+      }
     }
   }
 
@@ -329,7 +368,7 @@ export class Conversations {
   }
 
   private commit(conversation: Conversation, cursor: number) {
-    this.repository.save(conversation);
+    this.repository.save(conversation, cursor);
     const listeners = this.listeners.get(scopeKey(conversation));
     for (const event of conversation.events.slice(cursor)) {
       for (const listener of listeners ?? []) {

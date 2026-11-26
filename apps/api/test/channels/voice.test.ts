@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import test from 'node:test';
 import type { Transcript } from '../../../../packages/adapters/src/speech/index.ts';
 import type { IceCandidate, PeerInput } from '../../../../packages/adapters/src/voice/peer.ts';
+import type { SettledTurn } from '../../src/channels/settled.ts';
 import { events, harness, otherStaff, staffHeaders, tenantId, web } from './harness.ts';
 
 test(
@@ -17,6 +18,8 @@ test(
     const candidates: (IceCandidate | null)[] = [];
     const firstPlaying = Promise.withResolvers<void>();
     const secondPlaying = Promise.withResolvers<void>();
+    const settled = Promise.withResolvers<void>();
+    const outcomes: SettledTurn[] = [];
     const transcripts: Transcript[] = [
       { type: 'partial', segment: 0, text: 'Fictional' },
       { type: 'final', segment: 0, text: 'Fictional first question' },
@@ -24,6 +27,10 @@ test(
       { type: 'final', segment: 1, text: 'Another synthetic question' },
     ];
     const { app, advance, conversations, usage } = await harness(t, {
+      onSettledTurn(outcome) {
+        outcomes.push(outcome);
+        if (outcomes.length === 2) settled.resolve();
+      },
       voice: {
         voiceId: 'voice-fictional',
         peer(input) {
@@ -110,9 +117,19 @@ test(
     audio.push(Uint8Array.of(2, 0));
     audio.push(Uint8Array.of(3, 0));
     await secondPlaying.promise;
+    await settled.promise;
     assert.equal(plays[0].aborted, true);
     assert.equal(stopped, 1);
     assert.deepEqual(usage, [tenantId, tenantId]);
+    assert.equal(outcomes.length, 2);
+    assert(
+      outcomes.every((turn) => turn.conversationId === conversationId && turn.channel === 'voice'),
+    );
+    assert(outcomes.every((turn) => turn.audioSeconds !== null && turn.audioSeconds > 0));
+    assert.deepEqual(
+      outcomes.map((turn) => turn.outcome),
+      ['cancelled', 'completed'],
+    );
     assert.equal((await signal({ type: 'dtmf', digit: '8' })).statusCode, 204);
     callbacks!.onDtmf('0');
     assert.equal(conversations.get({ tenantId, conversationId }).state, 'queued');

@@ -1,14 +1,19 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test, { type TestContext } from 'node:test';
 import type { CallEnvelope } from '@bs/contracts';
 import { FakeGateway } from '@bs/core';
 import Fastify from 'fastify';
 import { registerAutomation } from '../../src/automation/index.ts';
 import type { RuntimeCapability } from '../../src/automation/runtime-routes.ts';
+import type { SettledTurn } from '../../src/channels/settled.ts';
 
 function harness(
   t: TestContext,
   authorizeRuntime?: (scope: CallEnvelope, capability: RuntimeCapability) => boolean,
+  overrides: Partial<Parameters<typeof registerAutomation>[1]> = {},
 ) {
   const gateway = new FakeGateway();
   const app = Fastify();
@@ -31,6 +36,7 @@ function harness(
         }),
         authorizeRuntime: authorizeRuntime ?? (() => true),
         sign: (scope, approvalId) => gateway.approveFixture(scope, approvalId),
+        ...overrides,
       }),
     { prefix: '/automation' },
   );
@@ -43,7 +49,7 @@ function harness(
       headers,
     });
   }
-  return { call, gateway };
+  return { app, call, gateway };
 }
 
 const approver = { 'x-fixture-actor': 'approver' };
@@ -114,6 +120,69 @@ test('cancelling a bot waiting for approval blocks resume', async (t) => {
     gateway.audit().some(({ tool }) => tool === 'purchase.order.approve'),
     false,
   );
+});
+
+test('recreates the worker and API, then resumes a bot and replays its journal cursor', async (t) => {
+  const folder = await mkdtemp(join(tmpdir(), 'fictional-bot-restart-'));
+  const previous = process.env.BS_TEST_RUNTIME_STATE;
+  process.env.BS_TEST_RUNTIME_STATE = join(folder, 'state.bin');
+  const reports: SettledTurn[] = [];
+  const gateway = new FakeGateway();
+  const options = {
+    gateway,
+    workerModule: 'workers.tests.runtime.postgres_worker',
+    onSettledTurn(turn: SettledTurn) {
+      reports.push(turn);
+    },
+    sign: (scope: CallEnvelope, approvalId: string) => gateway.approveFixture(scope, approvalId),
+  };
+  const first = harness(t, undefined, options);
+  const key = { 'idempotency-key': 'persisted-draft' };
+  const { id } = (await first.call('/bots/runs', chat, key)).json();
+  assert(id);
+  const path = '/bots/runs/' + id;
+  const before = await first.call(path + '/events');
+  assert.match(before.body, /event: approval_required/);
+  const { approval } = (await first.call(path)).json().pending;
+  await first.app.close();
+
+  const second = harness(t, undefined, options);
+  t.after(async () => {
+    await second.app.close();
+    if (previous === undefined) delete process.env.BS_TEST_RUNTIME_STATE;
+    else process.env.BS_TEST_RUNTIME_STATE = previous;
+    await rm(folder, { recursive: true, force: true });
+  });
+  assert.equal(
+    (await second.call('/bots/runs', { ...chat, prompt: 'Different' }, key)).statusCode,
+    409,
+  );
+  assert.equal((await second.call('/bots/runs', chat, key)).json().id, id);
+  const resumed = await second.call(path + '/resume', { approvalId: approval.id }, approver);
+  assert.equal(resumed.json().status, 'completed', resumed.body);
+  const cursor = [...before.body.matchAll(/^id: (\d+)$/gm)].at(-1)![1];
+  const replay = await second.call(path + '/events', undefined, { 'last-event-id': cursor });
+  assert.match(replay.body, /event: resumed/);
+  assert.match(replay.body, /event: settled/);
+  assert.doesNotMatch(replay.body, /event: started/);
+  const next = await second.call('/bots/runs', { ...chat, prompt: 'Check ord-001' });
+  assert.equal(next.statusCode, 202, next.body);
+  const reply = await second.call('/bots/runs/' + next.json().id + '/events');
+  assert.match(reply.body, /event: reply_delta\ndata: .*"delta":"Order ord-001 is /);
+  const session = await second.call('/bots/sessions/test/turns');
+  assert.deepEqual(
+    session.json().map((item: { id: string }) => item.id),
+    [id, next.json().id],
+  );
+  assert.deepEqual(
+    (await second.call('/bots/sessions/test/turns', undefined, approver)).json(),
+    [],
+  );
+  assert.deepEqual(
+    reports.map(({ conversationId }) => conversationId),
+    ['test', 'test'],
+  );
+  assert.equal(gateway.audit().filter(({ tool }) => tool === 'purchase.order.approve').length, 1);
 });
 
 test('workflow APIs publish immutable versions and preview with zero gateway calls', async (t) => {

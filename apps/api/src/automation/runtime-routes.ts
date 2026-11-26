@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import type { Approval, CallEnvelope, RunChatInput, ToolResult } from '@bs/contracts';
 import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import type { ToolProposal } from '../../../../packages/adapters/src/llm/index.ts';
+import type { OnSettledTurn } from '../channels/settled.ts';
 import {
   WorkerRejection,
   type ApprovalMaterial,
@@ -31,6 +32,7 @@ type Context = {
   ) => void;
   chatInput: (sessionId: string, prompt: string, route: 'native' | 'byo') => RunChatInput;
   propose: (input: RunChatInput) => ToolProposal | null;
+  onSettledTurn?: OnSettledTurn;
 };
 
 type BotEntry = {
@@ -40,6 +42,7 @@ type BotEntry = {
   events: BotEvent[];
   changed: AbortController;
   cancelRequested: boolean;
+  needsRecovery?: boolean;
   task: Promise<void>;
   resumingApproval?: Approval;
   resumeDenial?: ToolResult;
@@ -185,17 +188,39 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
   }
 
   function event(entry: BotEntry, update: BotEvent) {
+    if (update.id <= entry.events.length) return;
     if (update.kind === 'started') entry.view = { ...entry.view, status: 'running' };
     entry.events.push(update);
     wake(entry);
   }
 
   function track(entry: BotEntry, task: Promise<BotView>) {
+    const previousStatus = entry.view.status;
     entry.task = task
-      .then((view) => {
+      .then(async (view) => {
         entry.view = view;
+        if (
+          view.sessionId &&
+          view.status !== previousStatus &&
+          view.status !== 'pending_approval' &&
+          ctx.onSettledTurn
+        ) {
+          try {
+            await ctx.onSettledTurn({
+              tenantId: entry.scope.tenantId,
+              conversationId: view.sessionId,
+              turnId: view.id,
+              channel: 'web',
+              outcome: view.status,
+              audioSeconds: null,
+            });
+          } catch (error) {
+            app.log.error({ err: error, runId: view.id }, 'Bot turn outcome callback failed');
+          }
+        }
       })
       .catch(() => {
+        bots.delete(entry.view.id);
         entry.view = {
           ...entry.view,
           status: 'unknown',
@@ -206,12 +231,6 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
             message: 'Reconcile the run before dispatching again.',
           },
         };
-        event(entry, {
-          id: entry.events.length + 1,
-          kind: 'settled',
-          runId: entry.view.id,
-          status: 'unknown',
-        });
       })
       .finally(() => wake(entry));
     return entry.task;
@@ -222,9 +241,71 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
     cancelled: () => entry.cancelRequested,
   });
 
+  async function lookup(runId: string, scope: CallEnvelope, approvalId?: string) {
+    const local = bots.get(runId);
+    if (local) return local;
+    try {
+      const snapshot = await ctx.worker.invoke({
+        kind: 'bot-inspect',
+        envelope: scope,
+        runId,
+        approvalId,
+      });
+      const concurrent = bots.get(runId);
+      if (concurrent) return concurrent;
+      const entry: BotEntry = {
+        scope: snapshot.envelope,
+        fingerprint: snapshot.fingerprint ?? '',
+        view: snapshot.view,
+        events: snapshot.events,
+        changed: new AbortController(),
+        cancelRequested: false,
+        needsRecovery: snapshot.view.status === 'running',
+        task: Promise.resolve(),
+      };
+      bots.set(runId, entry);
+      return entry;
+    } catch (error) {
+      if (error instanceof WorkerRejection && error.code === 'not_found') return;
+      throw error;
+    }
+  }
+
+  function recover(entry: BotEntry) {
+    if (!entry.needsRecovery) return;
+    entry.needsRecovery = false;
+    void track(
+      entry,
+      ctx.worker
+        .invoke(
+          { kind: 'bot-recover', runId: entry.view.id, envelope: entry.scope },
+          controls(entry),
+        )
+        .then(({ view, events }) => {
+          entry.events = events;
+          return view;
+        }),
+    );
+  }
+
   app.get(
     '/bots',
     scoped('bot', () => ctx.worker.invoke({ kind: 'bot-list' })),
+  );
+  app.get(
+    '/bots/sessions/:sessionId/turns',
+    {
+      schema: {
+        params: { type: 'object', properties: { sessionId: id }, required: ['sessionId'] },
+      },
+    },
+    scoped('bot', (request, _reply, envelope) =>
+      ctx.worker.invoke({
+        kind: 'bot-session',
+        envelope,
+        sessionId: (request.params as { sessionId: string }).sessionId,
+      }),
+    ),
   );
   app.post(
     '/bots/runs',
@@ -245,11 +326,13 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
         input.prompt,
         input.route,
       ]);
-      const prior = bots.get(runId);
-      if (prior)
-        return prior.fingerprint === fingerprint
-          ? reply.code(202).send(prior.view)
-          : reject(reply, 'conflict');
+      const prior = await lookup(runId, scope);
+      if (prior) {
+        if (!owns(prior, scope)) return reject(reply, 'not_found');
+        if (prior.fingerprint !== fingerprint) return reject(reply, 'conflict');
+        recover(prior);
+        return reply.code(202).send(prior.view);
+      }
       const definitions = await ctx.worker.invoke({ kind: 'bot-list' });
       if (!definitions.some(({ id, version }) => id === input.botId && version === input.version)) {
         return reject(reply, 'not_found');
@@ -271,6 +354,7 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
           status: 'queued',
           result: null,
           pending: null,
+          sessionId: input.sessionId,
         },
         events: [],
         changed: new AbortController(),
@@ -286,6 +370,7 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
             runId,
             botId: input.botId,
             version: input.version,
+            fingerprint,
             envelope: scope,
             chat,
             proposal: ctx.propose(chat),
@@ -300,17 +385,19 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
   app.get(
     '/bots/runs/:runId',
     { schema: { params } },
-    scoped('bot', (request, reply, scope) => {
-      const entry = bots.get((request.params as { runId: string }).runId);
-      return owns(entry, scope) ? entry.view : reject(reply, 'not_found');
+    scoped('bot', async (request, reply, scope) => {
+      const entry = await lookup((request.params as { runId: string }).runId, scope);
+      if (!owns(entry, scope)) return reject(reply, 'not_found');
+      recover(entry);
+      return entry.view;
     }),
   );
 
   app.get(
     '/bots/runs/:runId/events',
     { schema: { params } },
-    scoped('bot', (request, reply, scope) => {
-      const entry = bots.get((request.params as { runId: string }).runId);
+    scoped('bot', async (request, reply, scope) => {
+      const entry = await lookup((request.params as { runId: string }).runId, scope);
       if (!owns(entry, scope)) return reject(reply, 'not_found');
       const cursor = request.headers['last-event-id'] ?? '0';
       if (
@@ -320,6 +407,7 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
       ) {
         return reject(reply, 'invalid_input');
       }
+      recover(entry);
       return reply
         .header('cache-control', 'no-store')
         .header('x-accel-buffering', 'no')
@@ -336,7 +424,7 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
       async (request, reply, scope) => {
         const { runId } = request.params as { runId: string };
         const { approvalId } = request.body as { approvalId: string };
-        const entry = bots.get(runId);
+        const entry = await lookup(runId, scope, approvalId);
         if (!entry) return reject(reply, 'not_found');
         if (matches(entry.resumingApproval, scope, approvalId)) {
           await entry.task;
@@ -386,11 +474,11 @@ export function registerRuntimeRoutes(app: FastifyInstance, ctx: Context) {
     { schema: { params } },
     scoped('bot', async (request, reply, scope) => {
       const { runId } = request.params as { runId: string };
-      const entry = bots.get(runId);
+      const entry = await lookup(runId, scope);
       if (!owns(entry, scope)) return reject(reply, 'not_found');
       entry.cancelRequested = true;
       await entry.task;
-      if (entry.view.status === 'pending_approval') {
+      if (entry.view.status === 'pending_approval' || entry.view.status === 'running') {
         await track(
           entry,
           ctx.worker.invoke({ kind: 'bot-cancel', runId, envelope: scope }, controls(entry)),
