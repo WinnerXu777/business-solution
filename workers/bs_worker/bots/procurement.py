@@ -179,7 +179,7 @@ class Procurement:
                                        for line in order["lines"]) else "partial",
         }
 
-    def match(self, order_id, bill: BillInput, policy):
+    def match(self, order_id, bill: BillInput, policy, *, commit=True):
         order = self.orders[order_id]
         key = bill.id
         material = (order_id, bill.model_dump())
@@ -188,7 +188,6 @@ class Procurement:
         if self.matches.get(key, {}).get("state") == "matched":
             return self.matches[key]
         billed = self._lines(bill.lines)
-        self.bills[key] = material
         approved = {line["skuId"]: line for line in order["lines"]}
         received = self._quantities(self.receipts, order_id)
         matched = self._quantities(self.bills, order_id, self.matches)
@@ -217,6 +216,9 @@ class Procurement:
             "reasons": issues, "variances": variances, "toleranceBps": policy.priceToleranceBps,
             "citations": [order_id, key, *(rid for rid, (po, _) in self.receipts.items() if po == order_id)],
         }
+        if not commit:
+            return result
+        self.bills[key] = material
         self.matches[key] = result
         if issues:
             self.exceptions[f"bill:{key}"] = result

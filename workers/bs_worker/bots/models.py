@@ -118,6 +118,96 @@ class PolicyUpdate(Model):
     collections: CollectionsPolicy
 
 
+class SalesInput(PurchaseInput):
+    customer: str | None = Field(default=None, min_length=1, max_length=160)
+    shipTo: str | None = Field(default=None, min_length=1, max_length=160)
+    csv: str | None = Field(default=None, min_length=1, max_length=16_000)
+
+
+class InvoiceDocument(Model):
+    vendor: str = Field(min_length=1, max_length=160)
+    invoiceNumber: Id
+    invoiceDate: date
+    poId: Id
+    currency: Literal["CAD"]
+    hstCents: int = Field(ge=0, le=1_000_000_000)
+    totalCents: Cents
+    lines: list[PricedLine] = Field(min_length=1, max_length=20)
+
+    @model_validator(mode="after")
+    def unique_skus(self):
+        if len({line.skuId for line in self.lines}) != len(self.lines):
+            raise ValueError("Use one line per SKU")
+        return self
+
+
+class InvoiceCaptureInput(PurchaseInput):
+    source: Literal["email"]
+    attachment: InvoiceDocument | None = None
+
+
+class ServiceInput(PurchaseInput):
+    conversationId: Id
+    verifiedCustomerId: Id
+
+
+class BotControl(Model):
+    enabled: bool = True
+
+
+BotId = Literal["pr-to-po", "collections", "order-entry", "quote", "ap-invoice", "customer-service"]
+BOT_IDS = ("pr-to-po", "collections", "order-entry", "quote", "ap-invoice", "customer-service")
+
+
+class OrderPolicy(Model):
+    minMatchConfidenceBps: int = Field(default=8500, ge=8000, le=10_000)
+
+
+class QuotePolicy(OrderPolicy):
+    marginFloorBps: dict[Literal["ppe", "hardware"], Annotated[int, Field(ge=0, le=9500)]] = Field(
+        default_factory=lambda: {"ppe": 3000, "hardware": 2500},
+    )
+    expiryDays: int = Field(default=14, ge=2, le=90)
+    reminderDaysBeforeExpiry: int = Field(default=3, ge=1, le=89)
+
+    @model_validator(mode="after")
+    def validate_terms(self):
+        if set(self.marginFloorBps) != {"ppe", "hardware"} or self.reminderDaysBeforeExpiry >= self.expiryDays:
+            raise ValueError("Specify both margin floors and schedule reminders before expiry")
+        return self
+
+
+class ApPolicy(Model):
+    hstBps: int = Field(default=1300, ge=0, le=10_000)
+    hstToleranceCents: int = Field(default=1, ge=0, le=10)
+
+
+class ServicePolicy(Model):
+    returnWindowDays: int = Field(default=30, ge=1, le=365)
+    acceptedConditions: list[Literal["unopened", "resalable"]] = Field(
+        default_factory=lambda: ["unopened", "resalable"], min_length=1, max_length=2,
+    )
+    restockingFeeBps: int = Field(default=1500, ge=0, le=10_000)
+
+
+class BotPolicies(Model):
+    controls: dict[BotId, BotControl] = Field(default_factory=lambda: {bot: BotControl() for bot in BOT_IDS})
+    orderEntry: OrderPolicy = Field(default_factory=OrderPolicy)
+    quote: QuotePolicy = Field(default_factory=QuotePolicy)
+    apInvoice: ApPolicy = Field(default_factory=ApPolicy)
+    customerService: ServicePolicy = Field(default_factory=ServicePolicy)
+
+    @model_validator(mode="after")
+    def complete_controls(self):
+        if set(self.controls) != set(BOT_IDS):
+            raise ValueError("Specify controls for all six bots")
+        return self
+
+
+class AllPolicyUpdate(PolicyUpdate):
+    bots: BotPolicies | None = None
+
+
 DEFAULT_PROCUREMENT = ProcurementPolicy(
     budgetCents={"stock-toronto": 500_000},
     authorityCents={"reader": 0, "operator": 100_000, "approver": 500_000, "admin": 1_000_000},

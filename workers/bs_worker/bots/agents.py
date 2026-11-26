@@ -10,6 +10,7 @@ from langgraph.types import interrupt
 
 from ..runtime.bots import BotDefinition, OutcomeUnknown, denied, fingerprint
 from .collections import reply_holds
+from .intake import INTAKE_MODELS
 from .models import CollectionsInput, Intake, PlanInput, PurchaseInput, ReplyInput
 from .procurement import REQUEST_ID, parse_intake
 
@@ -24,6 +25,8 @@ class State(TypedDict, total=False):
     command: str
     input: dict
     role: str
+    inputJson: str
+    localRunId: str
     pending: dict
     execution: dict
     result: dict
@@ -79,11 +82,17 @@ def definitions(host):
             return graph.compile(checkpointer=saver)
         return factory
 
+    def intake(host, call, state):
+        return {"result": host.workspace(state["envelope"]).intake.prepare(host, call, state, model_input)}
+
     return (
         BotDefinition("pr-to-po", 1, compile_graph(procure, approve_order),
                       frozenset({"llm.complete", "purchase.order.draft", "purchase.order.approve"}), 3, 10),
         BotDefinition("collections", 1, compile_graph(collect, approve_contact),
                       frozenset({"llm.complete", "message.preview", *SEND.values()}), 3, 10),
+        *(BotDefinition(bot, 1, compile_graph(intake, None),
+                        frozenset({"llm.complete", "order.read"} if bot == "customer-service" else {"llm.complete"}),
+                        2, 10) for bot in INTAKE_MODELS),
     )
 
 

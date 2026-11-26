@@ -11,8 +11,10 @@ from ..runtime.bots import BotRegistry, BotRuntime, fingerprint
 from ..runtime.store import MemoryBotStore
 from .agents import definitions
 from .collections import Collections
+from .intake import INTAKE_MODELS, Intake
+from .metrics import BotMetrics
 from .models import (
-    ApprovalInput, BillInput, CollectionsInput, PlanInput, PolicyUpdate, PurchaseInput,
+    AllPolicyUpdate, ApprovalInput, BillInput, BotPolicies, CollectionsInput, PlanInput, PurchaseInput,
     ReceiptInput, ReplyInput, DEFAULT_COLLECTIONS, DEFAULT_PROCUREMENT,
 )
 from .procurement import Procurement
@@ -23,12 +25,15 @@ FIXTURE_LOCAL_OFFSET = timezone(timedelta(hours=-5))
 FIXTURE_HOLIDAYS = {date(2026, 11, 11), date(2026, 12, 25), date(2026, 12, 28)}
 MODELS = {
     "purchase": PurchaseInput, "dunning": CollectionsInput, "reply": ReplyInput, "plan": PlanInput,
-    "policy-update": PolicyUpdate, "receipt": ReceiptInput, "match": BillInput,
+    "policy-update": AllPolicyUpdate, "receipt": ReceiptInput, "match": BillInput,
     "resume": ApprovalInput, "approve-draft": ApprovalInput, "approve-plan": ApprovalInput,
+    **INTAKE_MODELS,
 }
-RUNS = {"purchase": "pr-to-po", "dunning": "collections", "reply": "collections", "plan": "collections"}
+RUNS = {"purchase": "pr-to-po", "dunning": "collections", "reply": "collections", "plan": "collections",
+        **{bot: bot for bot in INTAKE_MODELS}}
 ROLE_PERMISSIONS = {
-    "policy": {"admin"}, "policy-update": {"admin"},
+    "policy": {"admin"}, "policy-schema": {"admin"}, "policy-update": {"admin"},
+    "ap-exceptions": {"operator", "approver", "admin"}, "service-queue": {"operator", "approver", "admin"},
     **{name: {"operator", "admin"} for name in (*RUNS, "receipt", "match")},
     **{name: {"approver", "admin"} for name in ("resume", "approve-draft", "approve-plan")},
 }
@@ -57,13 +62,16 @@ class Workspace:
         self.version = 1
         self.procurement_policy = DEFAULT_PROCUREMENT
         self.collections_policy = DEFAULT_COLLECTIONS
+        self.bots_policy = BotPolicies()
         self.procurement = Procurement(fixtures, tenant)
         self.collections = Collections(fixtures, tenant, local_time, can_contact)
+        self.intake = Intake(fixtures, tenant, self.procurement)
+        self.metrics = BotMetrics()
 
     def policies(self):
         return {
             "version": self.version, "procurement": self.procurement_policy.model_dump(),
-            "collections": self.collections_policy.model_dump(),
+            "collections": self.collections_policy.model_dump(), "bots": self.bots_policy.model_dump(),
         }
 
 
@@ -106,20 +114,41 @@ class FixtureBots:
             return self._start(command, scope, role, inputs, workspace)
         if command == "definitions":
             return self.runtime.registry.list()
+        if command == "metrics":
+            return workspace.metrics.report()
+        if command == "ap-exceptions":
+            return list(workspace.intake.ap.exceptions.values())
+        if command == "service-queue":
+            return list(workspace.intake.service.queue.values())
+        if command == "quote-reminders":
+            return workspace.intake.sales.reminders(self.local_time(self.now()).date())
         if command == "run":
             run = self.runtime.store.load(scope["tenantId"], target)
             if not run or run.envelope["actor"] != scope["actor"]:
                 raise KeyError(target)
-            return bot_view(run)
+            return bot_view(run, workspace)
         if command == "resume":
-            return bot_view(self.runtime.resume(target, scope, inputs.approvalId))
+            run = self.runtime.store.load(scope["tenantId"], target)
+            if not run:
+                raise KeyError(target)
+            if target in workspace.intake.approvals:
+                workspace.intake.resume(self, target, scope, inputs.approvalId)
+            else:
+                run = self.runtime.resume(target, scope, inputs.approvalId)
+            view = bot_view(run, workspace)
+            workspace.metrics.observe(view, self.now())
+            return view
         if command == "policy":
             return workspace.policies()
+        if command == "policy-schema":
+            return AllPolicyUpdate.model_json_schema()
         if command == "policy-update":
             if inputs.expectedVersion != workspace.version:
                 raise Conflict("Policy version changed")
             workspace.procurement_policy = inputs.procurement
             workspace.collections_policy = inputs.collections
+            if inputs.bots is not None:
+                workspace.bots_policy = inputs.bots
             workspace.version += 1
             return workspace.policies()
         if command == "exceptions":
@@ -132,7 +161,9 @@ class FixtureBots:
         if command == "match":
             return procurement.match(target, inputs, workspace.procurement_policy)
         if command == "approve-draft":
-            return self._approve_draft(procurement, target, inputs.approvalId, scope["actor"]["id"], workspace.version)
+            result = self._approve_draft(procurement, target, inputs.approvalId, scope["actor"]["id"], workspace.version)
+            workspace.metrics.local_approved(inputs.approvalId, self.now())
+            return result
         if command == "timeline":
             collections.customers[target]
             return collections.events.get(target, [])
@@ -142,11 +173,15 @@ class FixtureBots:
                 return collections.promises[target]
             if command == "payment-plan":
                 return collections.plans[target]
-            return collections.approve_plan(target, inputs.approvalId, scope["actor"]["id"], workspace.version, self.now())
+            result = collections.approve_plan(
+                target, inputs.approvalId, scope["actor"]["id"], workspace.version, self.now(),
+            )
+            workspace.metrics.local_approved(inputs.approvalId, self.now())
+            return result
         raise KeyError(command)
 
     def _start(self, command, scope, role, inputs, workspace):
-        if command != "purchase":
+        if RUNS[command] == "collections":
             workspace.collections.invoices[inputs.invoiceId]
         run_id = fingerprint([scope["tenantId"], scope["actor"], scope["idempotencyKey"]])
         request_fingerprint = fingerprint([command, inputs.model_dump(mode="json")])
@@ -154,12 +189,18 @@ class FixtureBots:
         if prior:
             if prior.initial["requestFingerprint"] != request_fingerprint:
                 raise Conflict("Run key is already bound to different input")
-            return bot_view(prior)
+            return bot_view(prior, workspace)
+        if not workspace.bots_policy.controls[RUNS[command]].enabled:
+            raise PermissionError
+        started = self.now()
         run = self.runtime.start(run_id, RUNS[command], 1, scope, {
             "command": command, "input": inputs.model_dump(mode="json"), "role": role,
+            "inputJson": inputs.model_dump_json(), "localRunId": run_id,
             "requestFingerprint": request_fingerprint,
         })
-        return bot_view(run)
+        view = bot_view(run, workspace)
+        workspace.metrics.observe(view, self.now(), started=started)
+        return view
 
     def _approve_draft(self, domain, request_id, approval_id, actor, version):
         draft = domain.drafts[request_id]
@@ -173,8 +214,9 @@ class FixtureBots:
         domain.orders[order_id] = draft
         return {"id": order_id, "draft": draft, "status": "approved_fixture"}
 
-def bot_view(run):
+def bot_view(run, workspace):
     return {
         "id": run.id, "botId": run.bot_id, "version": run.version,
         "status": run.status, "result": run.result, "pending": run.pending,
+        **workspace.intake.view(run.id),
     }

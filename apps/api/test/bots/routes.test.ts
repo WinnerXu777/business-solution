@@ -59,8 +59,12 @@ test('bot plugin scopes policy, runs, and business records to verified identity'
   assert.deepEqual(
     catalog.map((bot: { id: string; version: number }) => [bot.id, bot.version]),
     [
+      ['ap-invoice', 1],
       ['collections', 1],
+      ['customer-service', 1],
+      ['order-entry', 1],
       ['pr-to-po', 1],
+      ['quote', 1],
     ],
   );
   const { version, ...policies } = (await request('GET', '/policies', 'admin')).json();
