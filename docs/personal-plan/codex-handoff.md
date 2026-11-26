@@ -33,7 +33,18 @@ Pick up the lanes in this order. Running about four at a time works well.
 
 Lane D (platform durability and RLS) is finished and merged. Its follow-ups are in `pending-shared.md` for lane A.
 
-**Work in progress on branches.** Some lanes were partway through when Claude paused. If a `wip/<lane>` branch exists on GitHub, start from it, review the partial changes, and finish them.
+**Existing branches on GitHub.**
+
+| Branch | State | What to do |
+| --- | --- | --- |
+| `wip/integration` | Lane A partial snapshot, unreviewed | Start lane A from it. Review, finish, then open a PR. |
+| `platform/durability-b` | Lane B finished and reviewed, not merged | Open a PR to `main` as is. |
+| `platform/frontend-4` | Lane C round 4 finished and reviewed, not merged | Open a PR to `main` as is. |
+| `lane-e/more-bots` | Lane E partial (WIP commit) | Continue `lane-e2.md` from it. |
+| `lane-f/deploy-security` | Lane F partial (WIP commit) | Continue `lane-f2.md` from it. |
+| `lane-g/imports-reporting`, `lane-h/dev-platform-2` | Not started (same as `main`) | Start fresh from `main`. |
+
+Older `m1/*`, `platform/*`, `lane-*/start` and `m6/ml-depth` branches are already merged history. `m6/ml-depth` is a paused ML branch, so ignore it.
 
 ## Known issues
 
