@@ -1,3 +1,6 @@
+import { createMockCompliance } from './clients/mock-compliance.ts';
+import { createMockEventing } from './clients/mock-eventing.ts';
+import { createMockOperations, MockOperationsState } from './clients/mock-operations.ts';
 import { createMockAutomation, MockAutomationState } from './clients/mock-automation.ts';
 import { createMockRecords, MockRecordsState } from './clients/mock-records.ts';
 import { createMockAdministration } from './clients/mock-administration.ts';
@@ -141,6 +144,7 @@ export interface MockPlatformClientOptions {
   role?: PlatformRole;
   tenantId?: string;
   now?: string;
+  operationsState?: MockOperationsState;
   automationState?: MockAutomationState;
   recordsState?: MockRecordsState;
   platformOperator?: boolean;
@@ -149,6 +153,11 @@ export interface MockPlatformClientOptions {
 }
 
 export class MockPlatformClient implements PlatformClient {
+  readonly compliance: PlatformClient['compliance'];
+  readonly eventing: PlatformClient['eventing'];
+  readonly botPolicies: PlatformClient['botPolicies'];
+  readonly workflowManagement: PlatformClient['workflowManagement'];
+  readonly ops: PlatformClient['ops'];
   readonly auth: MockAuthClient;
   readonly access: PlatformClient['access'];
   readonly conversations: PlatformClient['conversations'];
@@ -176,6 +185,7 @@ export class MockPlatformClient implements PlatformClient {
     role = 'admin',
     tenantId = 'tenant-rivetquay',
     now,
+    operationsState = new MockOperationsState(),
     automationState = new MockAutomationState(),
     recordsState = new MockRecordsState(),
     platformOperator = false,
@@ -204,6 +214,16 @@ export class MockPlatformClient implements PlatformClient {
     };
     this.now = now ?? fixtures.asOf;
     this.auth = auth;
+    this.compliance = createMockCompliance(this.identity, this.now);
+    this.eventing = createMockEventing(this.identity, this.now);
+    const { botPolicies, workflowManagement, ops } = createMockOperations(
+      this.identity,
+      this.now,
+      operationsState,
+    );
+    this.botPolicies = botPolicies;
+    this.workflowManagement = workflowManagement;
+    this.ops = ops;
     if (tenantId === 'tenant-rivetquay') {
       this.setup.add('import_records');
       this.setup.add('choose_providers');

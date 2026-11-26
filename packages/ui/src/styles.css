@@ -108,7 +108,7 @@
 
 .bs-platform a,
 .bs-link-button {
-  color: var(--bs-accent);
+  color: var(--bs-accent-ink, var(--bs-accent));
   text-underline-offset: 0.2em;
 }
 
@@ -294,7 +294,7 @@
   flex: 0 0 auto;
   border-radius: 50%;
   background: var(--bs-accent-bg);
-  color: var(--bs-accent);
+  color: var(--bs-accent-ink, var(--bs-accent));
   font-size: var(--bs-type-small);
   font-weight: 700;
 }
@@ -514,7 +514,7 @@
 
 .bs-badge--accent {
   background: var(--bs-accent-bg);
-  color: var(--bs-accent);
+  color: var(--bs-accent-ink, var(--bs-accent));
 }
 .bs-badge--success {
   background: var(--bs-success-bg);
@@ -620,8 +620,8 @@
 }
 
 .bs-tab[aria-selected='true'] {
-  border-bottom-color: var(--bs-accent);
-  color: var(--bs-accent);
+  border-bottom-color: var(--bs-accent-ink, var(--bs-accent));
+  color: var(--bs-accent-ink, var(--bs-accent));
 }
 
 .bs-allowance {
@@ -1205,5 +1205,55 @@
     animation: none !important;
     scroll-behavior: auto !important;
     transition: none !important;
+  }
+}
+
+.bs-brand-mark img {
+  width: 100%;
+  height: 100%;
+  border-radius: inherit;
+  object-fit: contain;
+}
+.bs-brand-preview {
+  padding: 0.75rem;
+  background: var(--bs-surface);
+  border-radius: 0.5rem;
+}
+.bs-choice-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  min-width: 0;
+}
+.bs-notification-list,
+.bs-command-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.bs-command-list {
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.bs-command-list button {
+  width: 100%;
+  text-align: left;
+}
+.bs-notification-list li {
+  padding: 0.75rem 0;
+  border-bottom: 1px solid var(--bs-border);
+}
+.bs-shortcut {
+  font-size: 0.75em;
+}
+.bs-flow .bs-flow-node-error {
+  border: 2px solid var(--bs-danger);
+}
+@media (max-width: 850px) {
+  .bs-shortcut {
+    display: none;
+  }
+  .bs-profile {
+    flex-wrap: wrap;
   }
 }

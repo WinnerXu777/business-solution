@@ -1,3 +1,13 @@
+import { HttpOpsClient } from './clients/ops.ts';
+import type { OpsClient } from './clients/ops.ts';
+import { HttpWorkflowManagementClient } from './clients/workflow-management.ts';
+import type { WorkflowManagementClient } from './clients/workflow-management.ts';
+import { HttpBotPoliciesClient } from './clients/bot-policies.ts';
+import type { BotPoliciesClient } from './clients/bot-policies.ts';
+import { HttpEventingClient } from './clients/eventing.ts';
+import type { EventingClient } from './clients/eventing.ts';
+import { HttpComplianceClient } from './clients/compliance.ts';
+import type { ComplianceClient } from './clients/compliance.ts';
 import { HttpAutomationClient } from './clients/automation.ts';
 import type { AutomationClient } from './clients/automation.ts';
 import { HttpAccessClient, HttpAuthClient } from './clients/access.ts';
@@ -194,6 +204,11 @@ export class PlatformError extends Error {
 }
 
 export interface PlatformClient {
+  readonly compliance: ComplianceClient;
+  readonly eventing: EventingClient;
+  readonly botPolicies: BotPoliciesClient;
+  readonly workflowManagement: WorkflowManagementClient;
+  readonly ops: OpsClient;
   readonly auth: AuthClient;
   readonly access: AccessClient;
   readonly conversations: ConversationsClient;
@@ -275,6 +290,11 @@ function responseDenial(body: unknown, status: number): PlatformDenialCode | und
 }
 
 export class HttpPlatformClient implements PlatformClient {
+  readonly compliance: ComplianceClient;
+  readonly eventing: EventingClient;
+  readonly botPolicies: BotPoliciesClient;
+  readonly workflowManagement: WorkflowManagementClient;
+  readonly ops: OpsClient;
   readonly auth: AuthClient;
   readonly access: AccessClient;
   readonly conversations: ConversationsClient;
@@ -310,6 +330,11 @@ export class HttpPlatformClient implements PlatformClient {
       return response;
     };
     this.automation = new HttpAutomationClient(request, open);
+    this.compliance = new HttpComplianceClient(request);
+    this.eventing = new HttpEventingClient(request);
+    this.botPolicies = new HttpBotPoliciesClient(request);
+    this.workflowManagement = new HttpWorkflowManagementClient(request);
+    this.ops = new HttpOpsClient(request);
     this.auth = new HttpAuthClient(request);
     this.access = new HttpAccessClient(request);
     this.conversations = new HttpConversationsClient(request, open);

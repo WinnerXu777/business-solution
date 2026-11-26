@@ -1,3 +1,26 @@
+import { useMemo } from 'react';
+import { BrandMark, BrandingEditor, brandStyle, readBrand, saveBrand } from './branding.tsx';
+import type { TenantBrand } from './branding.tsx';
+import { LocaleContext, preferredLocale, useI18n } from './i18n.tsx';
+import type { Locale } from './i18n.tsx';
+import { CommandPalette } from './command-palette.tsx';
+import { NotificationCenter, WebhooksScreen } from './screens/eventing.tsx';
+import {
+  ConsentsScreen,
+  SuppressionsScreen,
+  ContactCheckScreen,
+  PrivacyScreen,
+  RetentionScreen,
+} from './screens/compliance.tsx';
+import { CollectionsScreen, ProcurementScreen } from './screens/bot-policies.tsx';
+import {
+  TemplatesScreen,
+  TriggersScreen,
+  WorkflowDiffScreen,
+} from './screens/workflow-management.tsx';
+import { WorkflowDraftScreen } from './screens/workflows.tsx';
+import { OpsScreen } from './screens/ops.tsx';
+import { Values } from './screens/round-four.tsx';
 import { useCallback, useEffect, useId, useRef, useState, useSyncExternalStore } from 'react';
 import type { ComponentType } from 'react';
 import { createPortal } from 'react-dom';
@@ -99,6 +122,7 @@ function SettingsRoute() {
   return null;
 }
 
+const manageSettings = (me: PlatformIdentity) => me.role === 'admin';
 const baseRoutes: readonly PlatformRoute[] = [
   { path: '/', title: 'Overview', component: OverviewScreen },
   { path: '/approvals', title: 'Approvals', component: ApprovalsScreen },
@@ -124,10 +148,60 @@ const baseRoutes: readonly PlatformRoute[] = [
   },
   { path: '/audit', title: 'Audit log', component: AuditScreen },
   { path: '/usage', title: 'Usage', component: UsageScreen },
+  {
+    path: '/compliance/consents',
+    title: 'Consents',
+    component: ConsentsScreen,
+    visible: manageSettings,
+  },
+  {
+    path: '/compliance/suppressions',
+    title: 'Suppressions',
+    component: SuppressionsScreen,
+    visible: manageSettings,
+  },
+  {
+    path: '/compliance/contact-check',
+    title: 'Contact check',
+    component: ContactCheckScreen,
+    visible: manageSettings,
+  },
+  {
+    path: '/compliance/privacy',
+    title: 'Privacy requests',
+    component: PrivacyScreen,
+    visible: manageSettings,
+  },
+  {
+    path: '/compliance/retention',
+    title: 'Retention',
+    component: RetentionScreen,
+    visible: manageSettings,
+  },
+  { path: '/webhooks', title: 'Webhooks', component: WebhooksScreen, visible: manageSettings },
+  { path: '/bots/procurement', title: 'Procurement', component: ProcurementScreen },
+  { path: '/bots/collections', title: 'Collections', component: CollectionsScreen },
+  { path: '/workflows/templates', title: 'Workflow templates', component: TemplatesScreen },
+  { path: '/workflows/triggers', title: 'Workflow triggers', component: TriggersScreen },
+  { path: '/workflows/diff', title: 'Workflow version diff', component: WorkflowDiffScreen },
+  {
+    path: '/ops',
+    title: 'Operations',
+    component: OpsScreen,
+    visible: (me) => Boolean(me.platformOperator),
+  },
   { path: '/settings', title: 'Settings', component: SettingsRoute },
 ];
 
 const detailRoutes: readonly PlatformRoute[] = [
+  { path: '/bots/procurement/match/:id', title: 'Three-way match', component: ProcurementScreen },
+  {
+    path: '/bots/collections/account/:id',
+    title: 'Account timeline',
+    component: CollectionsScreen,
+  },
+  { path: '/workflows/draft/:id', title: 'Workflow draft', component: WorkflowDraftScreen },
+  { path: '/workflows/diff/:id', title: 'Workflow version diff', component: WorkflowDiffScreen },
   { path: '/workflows/runs', title: 'Workflow runs', component: WorkflowRunsScreen },
   { path: '/workflows/dead-letters', title: 'Dead letters', component: WorkflowRunsScreen },
   { path: '/workflows/run/:id', title: 'Workflow run', component: WorkflowHistoryScreen },
@@ -152,11 +226,33 @@ const detailRoutes: readonly PlatformRoute[] = [
 
 const navigation = [
   { label: 'Operate', paths: ['/', '/approvals', '/bots', '/conversations', '/workflows'] },
+  {
+    label: 'Automation',
+    paths: [
+      '/bots/procurement',
+      '/bots/collections',
+      '/workflows/templates',
+      '/workflows/triggers',
+      '/workflows/diff',
+    ],
+  },
+  {
+    label: 'Compliance',
+    paths: [
+      '/compliance/consents',
+      '/compliance/suppressions',
+      '/compliance/contact-check',
+      '/compliance/privacy',
+      '/compliance/retention',
+    ],
+  },
   { label: 'Records', paths: ['/erp', '/crm'] },
   { label: 'Intelligence', paths: ['/insights', '/llm'] },
   {
     label: 'Platform',
     paths: [
+      '/webhooks',
+      '/ops',
       '/connectors',
       '/providers',
       '/credentials',
@@ -199,14 +295,23 @@ function SettingsScreen({
   me,
   theme,
   setTheme,
+  brand,
+  fallback,
+  onBrand,
+  setLocale,
 }: {
   me: PlatformIdentity;
   theme: Theme;
   setTheme: (theme: Theme) => void;
+  brand?: TenantBrand;
+  fallback: string;
+  onBrand: (brand?: TenantBrand) => boolean;
+  setLocale: (locale: Locale) => void;
 }) {
+  const { t, locale } = useI18n();
   return (
     <div className="bs-stack">
-      <Card title="Profile">
+      <Card title={t('Profile')}>
         <dl className="bs-details">
           <dt>Name</dt>
           <dd>{me.actor.displayName}</dd>
@@ -214,19 +319,30 @@ function SettingsScreen({
           <dd>{me.actor.id}</dd>
           <dt>Role</dt>
           <dd>
-            <Badge tone="accent">{me.role}</Badge>
+            <Badge tone="accent">{t(me.role)}</Badge>
           </dd>
           <dt>Tenant</dt>
           <dd>{me.tenant.name}</dd>
         </dl>
       </Card>
-      <Card title="Appearance">
+      <Card title={t('Appearance')}>
         <Switch
-          label="Dark theme"
+          label={t('Dark theme')}
           checked={theme === 'dark'}
           onChange={(active) => setTheme(active ? 'dark' : 'light')}
         />
       </Card>
+      <Card title={t('Language')}>
+        <Values
+          label="Display language"
+          options={['en-CA', 'fr-CA']}
+          value={locale}
+          onChange={setLocale}
+        />
+      </Card>
+      {me.role === 'admin' && (
+        <BrandingEditor brand={brand} fallback={fallback} theme={theme} onSave={onBrand} />
+      )}
     </div>
   );
 }
@@ -238,6 +354,8 @@ function TopBar({
   onSwitch,
   notify,
   sessionControls,
+  routes,
+  toggleTheme,
 }: {
   me: PlatformIdentity;
   client: PlatformClient;
@@ -245,7 +363,10 @@ function TopBar({
   onSwitch?: (workspace: Workspace) => Promise<void>;
   notify: Notice;
   sessionControls?: SessionControls;
+  routes: readonly PlatformRoute[];
+  toggleTheme: () => void;
 }) {
+  const { t } = useI18n();
   const options = useResource(useCallback(() => client.getWorkspaces(), [client]));
   const { busy, run } = useAction(notify);
   const workspace =
@@ -265,7 +386,7 @@ function TopBar({
     <header className="bs-topbar">
       <div className="bs-workspace">
         <Field
-          label="Workspace"
+          label={t('Workspace')}
           error={options.state.status === 'error' ? options.state.message : undefined}
         >
           {(props) => (
@@ -294,12 +415,20 @@ function TopBar({
         </Field>
         {options.state.status === 'error' && (
           <button type="button" className="bs-link-button" onClick={options.reload}>
-            Retry workspaces
+            {t('Retry workspaces')}
           </button>
         )}
       </div>
       <div className="bs-profile">
-        <Badge tone="accent">{me.role}</Badge>
+        <CommandPalette
+          client={client}
+          me={me}
+          routes={routes}
+          notify={notify}
+          toggleTheme={toggleTheme}
+        />
+        {me.actor.kind === 'person' && <NotificationCenter client={client} notify={notify} />}
+        <Badge tone="accent">{t(me.role)}</Badge>
         <details
           className="bs-user-menu"
           ref={profileMenu}
@@ -310,7 +439,10 @@ function TopBar({
             }
           }}
         >
-          <summary ref={profileTrigger} aria-label={'User menu, ' + me.actor.displayName}>
+          <summary
+            ref={profileTrigger}
+            aria-label={t('User menu, {name}', { name: me.actor.displayName })}
+          >
             <span className="bs-avatar" aria-hidden="true">
               {me.actor.displayName
                 .split(' ')
@@ -329,7 +461,7 @@ function TopBar({
                 if (profileMenu.current) profileMenu.current.open = false;
               }}
             >
-              Profile settings
+              {t('Profile settings')}
             </a>
             {sessionControls && (
               <>
@@ -338,14 +470,14 @@ function TopBar({
                   disabled={sessionControls.busy}
                   onClick={sessionControls.refresh}
                 >
-                  Refresh session
+                  {t('Refresh session')}
                 </Button>
                 <Button
                   variant="quiet"
                   disabled={sessionControls.busy}
                   onClick={sessionControls.logout}
                 >
-                  Sign out
+                  {t('Sign out')}
                 </Button>
               </>
             )}
@@ -361,7 +493,8 @@ function PlatformShell({
   extraRoutes = [],
   resolveWorkspaceClient,
   sessionControls,
-}: PlatformAppProps) {
+  setLocale,
+}: PlatformAppProps & { setLocale: (locale: Locale) => void }) {
   const [selection, setSelection] = useState<{
     client: PlatformClient;
     workspace: Workspace;
@@ -379,6 +512,20 @@ function PlatformShell({
   const compact = useSyncExternalStore(subscribeViewport, narrowViewport, () => false);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const [theme, setTheme] = useState(preferredTheme);
+  const { t, locale } = useI18n();
+  const [brandRevision, setBrandRevision] = useState(0);
+  const workspaceId =
+    selection?.workspace.id ??
+    (identity.state.status === 'ready' ? identity.state.data.tenant.id : undefined);
+  const brand = useMemo(
+    () => (workspaceId && brandRevision >= 0 ? readBrand(workspaceId) : undefined),
+    [workspaceId, brandRevision],
+  );
+  const fallback =
+    workspaceId && workspaceId !== 'tenant-rivetquay' && identity.state.status === 'ready'
+      ? (selection?.workspace.name ?? identity.state.data.tenant.name)
+      : 'Rivetquay';
+  const productName = brand?.productName ?? fallback;
   const [notices, setNotices] = useState<
     { id: number; message: string; tone: 'success' | 'danger' }[]
   >([]);
@@ -422,7 +569,15 @@ function PlatformShell({
     const routePath = normalizePath(route.path);
     routes.set(routePath, { ...route, path: routePath });
   }
-  const route = routes.get(path) ?? routes.get(path.replace(/\/[^/]+$/, '/:id'));
+  const candidate = routes.get(path) ?? routes.get(path.replace(/\/[^/]+$/, '/:id'));
+  const route =
+    candidate?.visible &&
+    candidate.path !== '/roles' &&
+    candidate.path !== '/tenants' &&
+    identity.state.status === 'ready' &&
+    !candidate.visible(identity.state.data)
+      ? undefined
+      : candidate;
   const me = identity.state.status === 'ready' ? identity.state.data : undefined;
   const nav = [...routes.values()].filter(
     (item) =>
@@ -499,15 +654,23 @@ function PlatformShell({
   );
   return (
     <ActionAuthContext.Provider value={handleAuth}>
-      <div className="bs-platform" data-theme={theme} ref={body}>
+      <div
+        className="bs-platform"
+        data-theme={theme}
+        lang={locale}
+        style={brandStyle(brand, theme)}
+        ref={body}
+      >
         <aside className="bs-sidebar">
-          <a className="bs-brand" href="#/" aria-label="Rivetquay overview">
-            <span className="bs-brand-mark" aria-hidden="true">
-              R
-            </span>
+          <a
+            className="bs-brand"
+            href="#/"
+            aria-label={t('{name} overview', { name: productName })}
+          >
+            <BrandMark name={productName} logoUrl={brand?.logoUrl} />
             <span>
-              <strong>Rivetquay</strong>
-              <small>Platform console</small>
+              <strong>{productName}</strong>
+              <small>{t('Platform console')}</small>
             </span>
           </a>
           <Button
@@ -517,11 +680,11 @@ function PlatformShell({
             aria-controls={navigationId}
             onClick={() => setNavigationOpen((value) => !value)}
           >
-            Menu
+            {t('Menu')}
           </Button>
           <nav
             id={navigationId}
-            aria-label="Platform navigation"
+            aria-label={t('Platform navigation')}
             hidden={compact && !navigationOpen}
             onKeyDown={(event) => {
               if (event.key === 'Escape' && compact && navigationOpen) {
@@ -533,9 +696,9 @@ function PlatformShell({
             }}
           >
             {navGroups.map(({ label, items }) => (
-              <div key={label} className="bs-nav-group" role="group" aria-label={label}>
+              <div key={label} className="bs-nav-group" role="group" aria-label={t(label)}>
                 <p className="bs-nav-group-title" aria-hidden="true">
-                  {label}
+                  {t(label)}
                 </p>
                 {items.map((item) => (
                   <a
@@ -550,7 +713,7 @@ function PlatformShell({
                     <span aria-hidden="true" className="bs-nav-icon">
                       {navIcons[item.path] ?? '·'}
                     </span>
-                    {item.navLabel ?? item.title}
+                    {t(item.navLabel ?? item.title)}
                   </a>
                 ))}
               </div>
@@ -569,20 +732,42 @@ function PlatformShell({
               return (
                 <>
                   <TopBar
+                    key={workspace.id + ':' + me.actor.id}
                     me={me}
                     client={sessionClient}
                     notify={notify}
                     activeWorkspace={workspace}
                     onSwitch={resolveWorkspaceClient ? switchWorkspace : undefined}
                     sessionControls={sessionControls}
+                    routes={[...routes.values()]}
+                    toggleTheme={() => setTheme((value) => (value === 'dark' ? 'light' : 'dark'))}
                   />
                   <main className="bs-content">
                     <h1 ref={title} tabIndex={-1}>
-                      {route?.title ?? 'Page not found'}
+                      {t(route?.title ?? 'Page not found')}
                     </h1>
                     <div key={workspace.id + ':' + path}>
                       {path === '/settings' && Component === SettingsRoute ? (
-                        <SettingsScreen me={me} theme={theme} setTheme={setTheme} />
+                        <SettingsScreen
+                          me={me}
+                          theme={theme}
+                          setTheme={setTheme}
+                          setLocale={setLocale}
+                          brand={brand}
+                          fallback={fallback}
+                          onBrand={(value) => {
+                            if (me.role !== 'admin') return false;
+                            try {
+                              saveBrand(workspace.id, value);
+                              setBrandRevision((revision) => revision + 1);
+                              notify(t('Branding saved.'));
+                              return true;
+                            } catch {
+                              notify(t('Branding could not be saved.'), 'danger');
+                              return false;
+                            }
+                          }}
+                        />
                       ) : Component ? (
                         <Component
                           client={sessionClient}
@@ -592,8 +777,8 @@ function PlatformShell({
                           notify={notify}
                         />
                       ) : (
-                        <EmptyState title="This route is unavailable.">
-                          <a href="#/">Return to overview</a>
+                        <EmptyState title={t('This route is unavailable.')}>
+                          <a href="#/">{t('Return to overview')}</a>
                         </EmptyState>
                       )}
                     </div>
@@ -618,6 +803,14 @@ function PlatformShell({
 }
 
 export function PlatformApp(props: PlatformAppProps) {
+  const [locale, setLocale] = useState(preferredLocale);
+  useEffect(() => {
+    try {
+      localStorage.setItem('bs-platform-locale', locale);
+    } catch {
+      /* Current locale remains available. */
+    }
+  }, [locale]);
   // Reset the session whenever the mounting app replaces its verified client.
   const [mountedClient, setMountedClient] = useState(props.client);
   const [sessionKey, setSessionKey] = useState(0);
@@ -625,5 +818,9 @@ export function PlatformApp(props: PlatformAppProps) {
     setMountedClient(props.client);
     setSessionKey(sessionKey + 1);
   }
-  return <PlatformShell key={sessionKey} {...props} />;
+  return (
+    <LocaleContext.Provider value={locale}>
+      <PlatformShell setLocale={setLocale} key={sessionKey} {...props} />
+    </LocaleContext.Provider>
+  );
 }

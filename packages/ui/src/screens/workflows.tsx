@@ -1,3 +1,5 @@
+import { useI18n } from '../i18n.tsx';
+import type { WorkflowValidation } from '../clients/workflow-management.ts';
 import { useCallback, useEffect, useState } from 'react';
 import { Background, Controls, ReactFlow } from '@xyflow/react';
 import type { Connection, Edge, Node, XYPosition } from '@xyflow/react';
@@ -228,20 +230,44 @@ function WorkflowApprovalInbox({
   );
 }
 
+export function WorkflowDraftScreen(props: PlatformRouteContext) {
+  const { client, path } = props;
+  const { t } = useI18n();
+  const id = routeId(path);
+  const load = useResource(useCallback(() => client.workflowManagement.getDraft(id), [client, id]));
+  return (
+    <RemoteContent resource={load} label={t('Workflow draft')}>
+      {({ definition }) => (
+        <WorkflowEditor
+          {...props}
+          installedDraft={definition}
+          nextVersion={definition.version}
+          onPublished={() => {
+            window.location.hash = '#/workflows';
+          }}
+        />
+      )}
+    </RemoteContent>
+  );
+}
+
 function WorkflowEditor({
   client,
   me,
   notify,
   published,
+  installedDraft,
   nextVersion,
   onPublished,
 }: Pick<PlatformRouteContext, 'client' | 'me' | 'notify'> & {
   published?: WorkflowDefinition;
+  installedDraft?: WorkflowDefinition;
   nextVersion: number;
   onPublished: (value: WorkflowDefinition) => void;
 }) {
   const editable = canOperate(me.role);
-  const initial = published ?? initialDefinition;
+  const { t } = useI18n();
+  const initial = installedDraft ?? published ?? initialDefinition;
   const [draft, setDraft] = useState<WorkflowDefinition>({ ...initial, version: nextVersion });
   const [selection, setSelection] = useState(initial.nodes[0].id);
   const [kind, setKind] = useState<WorkflowNode['kind']>('mapping');
@@ -259,9 +285,23 @@ function WorkflowEditor({
     Object.keys(invalidFields).length > 0
       ? 'Correct the node configuration.'
       : validateWorkflow(draft);
+  const [serverValidation, setServerValidation] = useState<{
+    definition: WorkflowDefinition;
+    result: WorkflowValidation;
+  }>();
+  const issues =
+    serverValidation?.definition === display ? serverValidation.result.issues : undefined;
+  const affectedNodes = new Set(issues?.map((issue) => issue.nodeId));
   const flowNodes: Node[] = display.nodes.map((node, index) => ({
     id: node.id,
-    data: { label: node.id + ' · ' + node.kind },
+    data: {
+      label:
+        node.id +
+        ' · ' +
+        t(node.kind) +
+        (affectedNodes.has(node.id) ? ' · ' + t('Invalid node') : ''),
+    },
+    className: affectedNodes.has(node.id) ? 'bs-flow-node-error' : undefined,
     selected: node.id === selection,
     position: positions[node.id] ?? {
       x: 36 + (index % 3) * 220,
@@ -412,7 +452,46 @@ function WorkflowEditor({
               </Button>
             </div>
           )}
-          <div className="bs-flow" aria-label="Workflow canvas">
+          <div className="bs-inline">
+            <Button
+              variant="secondary"
+              disabled={action.busy}
+              onClick={() => {
+                setServerValidation(undefined);
+                void action.run(
+                  () => client.workflowManagement.validate(display),
+                  (result) => setServerValidation({ definition: display, result }),
+                );
+              }}
+            >
+              {t('Validate workflow')}
+            </Button>
+            <a href={'#/workflows/diff/' + encodeURIComponent(display.id)}>
+              {t('Compare versions')}
+            </a>
+          </div>
+          {issues &&
+            (issues.length ? (
+              <ul role="alert">
+                {issues.map((issue, index) => (
+                  <li key={index}>
+                    {issue.nodeId && (
+                      <button
+                        className="bs-link-button"
+                        type="button"
+                        onClick={() => setSelection(issue.nodeId!)}
+                      >
+                        {issue.nodeId}
+                      </button>
+                    )}{' '}
+                    {t(issue.message)}
+                  </li>
+                ))}
+              </ul>
+            ) : (
+              <p role="status">{t('Workflow validation passed.')}</p>
+            ))}
+          <div className="bs-flow" aria-label={t('Workflow canvas')}>
             <ReactFlow
               nodes={flowNodes}
               edges={edges}

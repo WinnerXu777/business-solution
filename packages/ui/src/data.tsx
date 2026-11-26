@@ -1,3 +1,4 @@
+import { useI18n } from './i18n.tsx';
 import { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Button, EmptyState, Skeleton } from './components.tsx';
@@ -49,6 +50,7 @@ export type Notice = (message: string, tone?: 'success' | 'danger') => void;
 export const ActionAuthContext = createContext<(error: PlatformError) => boolean>(() => false);
 
 export function useAction(notify: Notice) {
+  const { t } = useI18n();
   const handleAuth = useContext(ActionAuthContext);
   const [busy, setBusy] = useState(false);
   const running = useRef(false);
@@ -68,7 +70,7 @@ export function useAction(notify: Notice) {
       if (active.current) onSuccess(result);
     } catch (error) {
       if (active.current && !(error instanceof PlatformError && handleAuth(error))) {
-        notify(errorMessage(error), 'danger');
+        notify(t(errorMessage(error)), 'danger');
       }
     } finally {
       running.current = false;
@@ -87,14 +89,16 @@ export function RemoteContent<T>({
   children: (data: T) => ReactNode;
   label: string;
 }) {
+  const { t } = useI18n();
   const { state, reload } = resource;
-  if (state.status === 'loading') return <Skeleton label={'Loading ' + label} />;
+  if (state.status === 'loading')
+    return <Skeleton label={t('Loading {label}', { label: t(label) })} />;
   if (state.status === 'error')
     return (
-      <EmptyState title={'Could not load ' + label}>
-        <p role="alert">{state.message}</p>
+      <EmptyState title={t('Could not load {label}', { label: t(label) })}>
+        <p role="alert">{t(state.message)}</p>
         <Button variant="secondary" onClick={reload}>
-          Retry
+          {t('Retry')}
         </Button>
       </EmptyState>
     );

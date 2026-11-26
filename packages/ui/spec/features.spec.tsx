@@ -69,6 +69,7 @@ test('groups each entry in the requested sidebar and hides detail routes from th
     'Roles',
     'Audit log',
     'Usage',
+    'Webhooks',
     'Settings',
   ]);
   await navigate('/billing');
