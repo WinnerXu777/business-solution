@@ -41,6 +41,10 @@ export class PlatformAudit {
     return this.persistence?.transaction(tenantId, run) ?? this.queue.run(run);
   }
 
+  claim<Result>(tenantId: string, run: () => Promise<Result>) {
+    return this.persistence?.claim?.(tenantId, run) ?? this.transaction(tenantId, run);
+  }
+
   record(
     context: MutationContext,
     tool: string,

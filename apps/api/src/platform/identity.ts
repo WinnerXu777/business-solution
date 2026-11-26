@@ -11,17 +11,16 @@ export function createPlatformFixtureIdentityVerifier(
 ): IdentityVerifier {
   const bindings = new Map<string, VerifiedIdentity>();
   for (const [token, identity] of tokens) {
-    if (!token || !directory.resolve(identity))
-      throw new Error('Invalid platform fixture identity binding.');
+    if (!token) throw new Error('Invalid platform fixture identity binding.');
     bindings.set(token, { tenantId: identity.tenantId, actor: { ...identity.actor } });
   }
-  return (token) => {
+  return async (token) => {
     const identity = bindings.get(token);
-    return identity && directory.resolve(identity) ? structuredClone(identity) : undefined;
+    return identity && (await directory.resolve(identity)) ? structuredClone(identity) : undefined;
   };
 }
 
 /** Shared REST/MCP bootstrap can use this without knowing the platform session format. */
 export function createPlatformSessionIdentityVerifier(auth: PlatformAuth): IdentityVerifier {
-  return (token) => auth.sessions.verify(token)?.identity;
+  return async (token) => (await auth.sessions.verify(token))?.identity;
 }

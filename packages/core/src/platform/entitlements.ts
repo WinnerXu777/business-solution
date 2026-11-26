@@ -48,7 +48,7 @@ export class EntitlementStore {
   private readonly now: () => string;
   private readonly initialPlan?: (
     tenantId: string,
-  ) => (PlanInput & { createdAt: string }) | undefined;
+  ) => Promise<(PlanInput & { createdAt: string }) | undefined>;
 
   constructor(
     fixtures: readonly Entitlement[],
@@ -68,8 +68,8 @@ export class EntitlementStore {
     tenantId: string,
     module: ModuleId,
     instant: number,
+    plan: (PlanInput & { createdAt: string }) | undefined,
   ): Entitlement | undefined {
-    const plan = this.initialPlan?.(tenantId);
     if (
       !plan ||
       (module !== 'records' && !moduleAddOns[module].some((id) => plan.addOns.includes(id)))
@@ -89,6 +89,7 @@ export class EntitlementStore {
 
   async listing(tenantId: string, usage: UsageCounterEvent[]) {
     const instant = Date.parse(this.now());
+    const plan = await this.initialPlan?.(tenantId);
     return Promise.all(
       this.catalog.list().map(async (module) => {
         const row =
@@ -99,7 +100,7 @@ export class EntitlementStore {
               item.unit === 'actions' &&
               Date.parse(item.windowStart) <= instant &&
               instant < Date.parse(item.windowEnd),
-          ) ?? this.provisioned(tenantId, module.moduleId, instant);
+          ) ?? this.provisioned(tenantId, module.moduleId, instant, plan);
         const override = await this.repository.get(tenantId, module.moduleId);
         const used = row
           ? actionUsage(
@@ -124,9 +125,9 @@ export class EntitlementStore {
     );
   }
 
-  override(tenantId: string, module: ModuleId) {
-    if (this.initialPlan?.(tenantId) && !this.provisioned(tenantId, module, Date.parse(this.now())))
-      return Promise.resolve(false);
+  async override(tenantId: string, module: ModuleId) {
+    const plan = await this.initialPlan?.(tenantId);
+    if (plan && !this.provisioned(tenantId, module, Date.parse(this.now()), plan)) return false;
     return this.repository.get(tenantId, module);
   }
 

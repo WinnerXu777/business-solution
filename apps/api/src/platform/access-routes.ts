@@ -3,7 +3,7 @@ import {
   PlatformError,
   type Permission,
   type PlatformAuth,
-  type PlatformIdentity,
+  type MutationContext,
   type PlatformServices,
   type TenantInput,
 } from '../../../../packages/core/src/platform/index.ts';
@@ -15,8 +15,12 @@ interface AccessRoutes {
   base: string;
   services: PlatformServices;
   auth?: PlatformAuth;
-  context(request: FastifyRequest): PlatformIdentity;
-  requirePermission(request: FastifyRequest, permission: Permission, sensitive?: boolean): void;
+  context(request: FastifyRequest): MutationContext;
+  requirePermission(
+    request: FastifyRequest,
+    permission: Permission,
+    sensitive?: boolean,
+  ): Promise<void>;
   requireOperator(request: FastifyRequest): void;
   validate<T>(request: FastifyRequest, schema: Schema, input: unknown): T;
   query<T>(request: FastifyRequest, schema: Schema): T;
@@ -45,6 +49,9 @@ export function registerAccessRoutes(
 ) {
   const { directory } = services;
   const schemas = document.components.schemas;
+  const routedToken = { type: 'string', pattern: '^[A-Za-z0-9_-]{2,171}\\.[A-Za-z0-9_-]{43}$' };
+  const refreshRequest = { ...schemas.RefreshRequest, properties: { refreshToken: routedToken } };
+  const inviteAccept = { ...schemas.InviteAccept, properties: { enrollmentToken: routedToken } };
   const publicRoute = { config: { platformPublic: true } };
   const accessRoute = { config: { platformAccess: true } };
   const callbackPath = base + '/auth/callback';
@@ -80,7 +87,7 @@ export function registerAccessRoutes(
   app.post(base + '/auth/refresh', publicRoute, async (request) => {
     const { refreshToken } = validate<{ refreshToken: string }>(
       request,
-      schemas.RefreshRequest,
+      refreshRequest,
       request.body,
     );
     return oidc().sessions.refresh(refreshToken);
@@ -89,25 +96,25 @@ export function registerAccessRoutes(
   app.post(base + '/auth/logout', publicRoute, async (request) => {
     const { refreshToken } = validate<{ refreshToken: string }>(
       request,
-      schemas.RefreshRequest,
+      refreshRequest,
       request.body,
     );
     return oidc().logout(refreshToken);
   });
 
   app.get(base + '/members', accessRoute, async (request) => {
-    requirePermission(request, 'members.read');
+    await requirePermission(request, 'members.read');
     return directory.members(context(request).tenantId);
   });
 
   app.post(base + '/invites', async (request, reply) => {
-    requirePermission(request, 'members.manage', true);
+    await requirePermission(request, 'members.manage', true);
     const { email, roleId } = validate<{ email: string; roleId: string }>(
       request,
       schemas.InviteCreate,
       request.body,
     );
-    const invite = directory.createInvite(context(request), email, roleId);
+    const invite = await directory.createInvite(context(request), email, roleId);
     return reply.code(201).send(invite);
   });
 
@@ -118,7 +125,7 @@ export function registerAccessRoutes(
       const token = validate<string>(request, schemas.OpaqueAuthToken, request.params.token);
       const { enrollmentToken } = validate<{ enrollmentToken: string }>(
         request,
-        schemas.InviteAccept,
+        inviteAccept,
         request.body,
       );
       return oidc().acceptInvite(token, enrollmentToken);
@@ -126,7 +133,7 @@ export function registerAccessRoutes(
   );
 
   app.patch<{ Params: { id: string } }>(base + '/members/:id/role', async (request) => {
-    requirePermission(request, 'members.manage', true);
+    await requirePermission(request, 'members.manage', true);
     const id = validate<string>(request, schemas.Id, request.params.id);
     const { roleId } = validate<{ roleId: string }>(
       request,
@@ -137,38 +144,42 @@ export function registerAccessRoutes(
   });
 
   app.delete<{ Params: { id: string } }>(base + '/members/:id', async (request, reply) => {
-    requirePermission(request, 'members.manage', true);
+    await requirePermission(request, 'members.manage', true);
     const id = validate<string>(request, schemas.Id, request.params.id);
-    directory.removeMember(context(request), id);
+    await directory.removeMember(context(request), id);
     return reply.code(204).send();
   });
 
   app.get(base + '/roles', accessRoute, async (request) => {
-    requirePermission(request, 'roles.read');
+    await requirePermission(request, 'roles.read');
     return directory.roles(context(request).tenantId);
   });
 
   app.post(base + '/roles', async (request, reply) => {
-    requirePermission(request, 'roles.manage', true);
+    await requirePermission(request, 'roles.manage', true);
     const input = validate<Parameters<typeof directory.createRole>[1]>(
       request,
       schemas.RoleCreate,
       request.body,
     );
-    return reply.code(201).send(directory.createRole(context(request), input));
+    return reply.code(201).send(await directory.createRole(context(request), input));
   });
 
   app.post(base + '/tenants', async (request, reply) => {
     requireOperator(request);
     const input = validate<TenantInput>(request, schemas.TenantCreate, request.body);
-    return reply.code(201).send(directory.provision(input));
+    return reply.code(201).send(await directory.provision(input, context(request)));
   });
 
   for (const action of ['suspend', 'resume'] as const) {
     app.post<{ Params: { id: string } }>(base + '/tenants/:id/' + action, async (request) => {
       requireOperator(request);
       const id = validate<string>(request, schemas.Id, request.params.id);
-      return directory.setTenantStatus(id, action === 'suspend' ? 'suspended' : 'active');
+      return directory.setTenantStatus(
+        id,
+        action === 'suspend' ? 'suspended' : 'active',
+        context(request),
+      );
     });
   }
 }

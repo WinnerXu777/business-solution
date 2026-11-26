@@ -290,12 +290,16 @@ export class ContactLedger {
           throw new PlatformError('idempotency_conflict');
         return;
       }
-      await this.rows.attempts.put(tenantId, attemptId, {
-        ...input,
-        id: attemptId,
-        cadenceKey: profile.cadenceKey ?? input.contactId,
-        at: iso(occurrence),
-      });
+      await this.saveAttempt(
+        tenantId,
+        {
+          ...input,
+          id: attemptId,
+          cadenceKey: profile.cadenceKey ?? input.contactId,
+          at: iso(occurrence),
+        },
+        'manual',
+      );
     });
   }
 
@@ -368,11 +372,32 @@ export class ContactLedger {
         if (recent.length >= cap) return this.deny('contact_cap');
         if (dispatch) {
           const id = dispatch.attemptId;
-          await this.rows.attempts.put(tenantId, id, { ...input, id, cadenceKey, at: iso(time) });
+          await this.saveAttempt(tenantId, { ...input, id, cadenceKey, at: iso(time) }, 'reserve');
         }
         return { allow: true, reasons: [], consentId: consent.id } satisfies ContactDecision;
       });
     });
+  }
+
+  private async saveAttempt(
+    tenantId: string,
+    attempt: ContactAttempt,
+    action: 'manual' | 'reserve',
+  ) {
+    const id = tokenDigest(attempt.id);
+    await this.rows.attempts.put(tenantId, attempt.id, attempt);
+    await this.audit.record(
+      {
+        tenantId,
+        actor: { id: 'platform-contact-policy', kind: 'service' },
+        source: action === 'manual' ? 'rest' : 'workflow',
+        traceId: id,
+        correlationId: id,
+      },
+      'platform.contact_attempt.' + action,
+      'ok',
+      id,
+    );
   }
 
   private deny(reason: ContactReason): ContactDecision {

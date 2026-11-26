@@ -76,6 +76,7 @@ export function retentionFor(
   record: GovernedRecord,
   holds: readonly RetentionHold[],
   time: number,
+  policies: readonly RetentionPolicy[] = retentionPolicies,
 ) {
   const classes = new Set([record.dataClass]);
   let unclassified = false;
@@ -100,7 +101,7 @@ export function retentionFor(
     }
   }
   classify(record.fields);
-  const matched = retentionPolicies.filter(({ dataClass }) => classes.has(dataClass));
+  const matched = policies.filter(({ dataClass }) => classes.has(dataClass));
   unclassified ||=
     matched.length !== classes.size || !Object.hasOwn(classifiedFields, record.recordType);
   const holdIds = holds

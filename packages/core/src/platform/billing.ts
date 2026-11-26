@@ -224,7 +224,7 @@ export class BillingLedger {
   private readonly settlement: SettlementAdapter;
   private readonly initialPlan?: (
     tenantId: string,
-  ) => (PlanInput & { createdAt: string }) | undefined;
+  ) => Promise<(PlanInput & { createdAt: string }) | undefined>;
   private readonly onFinalize?: (tenantId: string, invoice: FinalInvoice) => Promise<unknown>;
 
   constructor(
@@ -254,7 +254,7 @@ export class BillingLedger {
   }
 
   private async plans(tenantId: string): Promise<PlanRevision[]> {
-    const initial = this.initialPlan?.(tenantId);
+    const initial = await this.initialPlan?.(tenantId);
     return (
       (await this.repositories.plans.get(tenantId, 'subscription')) ?? [
         {

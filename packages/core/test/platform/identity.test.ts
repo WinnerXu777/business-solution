@@ -104,39 +104,42 @@ test('OIDC step-up requires fresh MFA from a signed auth_time and AMR or configu
   assert.equal((await oidc.callback(state, code, login.browserToken)).principal.mfaAt, now());
 });
 
-test('sessions expire, rotate refresh, revoke whole families and check current membership versions', () => {
+test('sessions expire, rotate refresh, revoke whole families and check current membership versions', async () => {
   const { now, advance } = clock();
   const directory = new TenantDirectory();
   const options = { signingKey: Buffer.alloc(32, 7), now };
   const sessions = new PlatformSessions(directory, options);
   assert.throws(() => new PlatformSessions(directory, { signingKey: Buffer.alloc(31) }));
   const assurance = { platformOperator: false, mfaAt: now() };
-  const first = sessions.issue(reader, assurance);
-  assert.equal(sessions.verify(first.accessToken)?.identity.actor.id, reader.actor.id);
-  assert.equal(sessions.verify(first.accessToken + 'a'), undefined);
-  assert.equal(new PlatformSessions(directory, options).verify(first.accessToken), undefined);
-  const second = sessions.refresh(first.refreshToken);
+  const first = await sessions.issue(reader, assurance);
+  assert.equal((await sessions.verify(first.accessToken))?.identity.actor.id, reader.actor.id);
+  assert.equal(await sessions.verify(first.accessToken + 'a'), undefined);
+  assert.equal(
+    (await new PlatformSessions(directory, options).verify(first.accessToken))?.identity.actor.id,
+    reader.actor.id,
+  );
+  const second = await sessions.refresh(first.refreshToken);
   assert.notEqual(first.accessToken, second.accessToken);
-  assert.throws(() => sessions.refresh(first.refreshToken), { code: 'forbidden' });
-  assert.equal(sessions.logout(second.refreshToken), true);
+  await assert.rejects(() => sessions.refresh(first.refreshToken), { code: 'forbidden' });
+  assert.equal(await sessions.logout(second.refreshToken), true);
   for (const token of [first.accessToken, second.accessToken])
-    assert.equal(sessions.verify(token), undefined);
-  assert.throws(() => sessions.refresh(second.refreshToken), { code: 'forbidden' });
-  const expiring = sessions.issue(reader, assurance);
+    assert.equal(await sessions.verify(token), undefined);
+  await assert.rejects(() => sessions.refresh(second.refreshToken), { code: 'forbidden' });
+  const expiring = await sessions.issue(reader, assurance);
   advance(5 * 60_000);
-  assert.equal(sessions.verify(expiring.accessToken), undefined);
+  assert.equal(await sessions.verify(expiring.accessToken), undefined);
   advance(5 * 60_000);
-  const refreshed = sessions.refresh(expiring.refreshToken);
-  assert.equal(sessions.verify(refreshed.accessToken)?.steppedUp, false);
-  directory.assignRole(fixtureAdmin, reader.actor.id, 'operator');
-  assert.equal(sessions.verify(refreshed.accessToken), undefined);
-  assert.throws(() => sessions.refresh(refreshed.refreshToken), { code: 'forbidden' });
-  const long = sessions.issue(reader, assurance);
+  const refreshed = await sessions.refresh(expiring.refreshToken);
+  assert.equal((await sessions.verify(refreshed.accessToken))?.steppedUp, false);
+  await directory.assignRole(fixtureAdmin, reader.actor.id, 'operator');
+  assert.equal(await sessions.verify(refreshed.accessToken), undefined);
+  await assert.rejects(() => sessions.refresh(refreshed.refreshToken), { code: 'forbidden' });
+  const long = await sessions.issue(reader, assurance);
   advance(8 * 60 * 60_000);
-  assert.throws(() => sessions.refresh(long.refreshToken), { code: 'forbidden' });
+  await assert.rejects(() => sessions.refresh(long.refreshToken), { code: 'forbidden' });
 });
 
-test('invite redemption is tenant scoped, single-use, expiring and bound to a verified address', () => {
+test('invite redemption is tenant scoped, single-use, expiring and bound to a verified address', async () => {
   const { now, advance } = clock();
   const directory = new TenantDirectory(fixtures, () => new Date(now()).toISOString());
   const principal = {
@@ -144,37 +147,41 @@ test('invite redemption is tenant scoped, single-use, expiring and bound to a ve
     subject: 'new',
     verifiedEmail: 'reader@example.test',
   };
-  const first = directory.createInvite(fixtureAdmin, 'Reader@example.test', 'reader');
-  assert.throws(() => directory.acceptInvite(other.tenantId, first.token, principal), {
+  const first = await directory.createInvite(fixtureAdmin, 'Reader@example.test', 'reader');
+  await assert.rejects(() => directory.acceptInvite(other.tenantId, first.token, principal), {
     code: 'not_found',
   });
-  assert.throws(
+  await assert.rejects(
     () => directory.acceptInvite(tenantId, first.token, { ...principal, verifiedEmail: undefined }),
     { code: 'not_found' },
   );
-  const joined = directory.acceptInvite(tenantId, first.token, principal);
+  const joined = await directory.acceptInvite(tenantId, first.token, principal);
   assert.equal(joined.role, 'reader');
-  assert.equal(directory.userFor(principal)?.actor.id, joined.id);
-  assert.throws(() => directory.acceptInvite(tenantId, first.token, principal), {
+  assert.equal((await directory.userFor(tenantId, principal))?.actor.id, joined.id);
+  await assert.rejects(() => directory.acceptInvite(tenantId, first.token, principal), {
     code: 'not_found',
   });
-  const second = directory.createInvite(fixtureAdmin, 'reader@example.test', 'reader');
+  const second = await directory.createInvite(fixtureAdmin, 'reader@example.test', 'reader');
   advance(24 * 60 * 60_000);
-  assert.throws(
+  await assert.rejects(
     () => directory.acceptInvite(tenantId, second.token, { ...principal, subject: 'late' }),
     { code: 'not_found' },
   );
 });
 
-test('built-in and tenant-local custom permissions preserve approval separation and admin access', () => {
+test('built-in and tenant-local custom permissions preserve approval separation and admin access', async () => {
   const directory = new TenantDirectory();
   assert.deepEqual(
-    [reader, operator, approver, fixtureAdmin].map((identity) => [
-      directory.allows(identity, 'records.read'),
-      directory.allows(identity, 'actions.request'),
-      directory.allows(identity, 'approvals.decide'),
-      directory.allows(identity, 'members.manage'),
-    ]),
+    await Promise.all(
+      [reader, operator, approver, fixtureAdmin].map((identity) =>
+        Promise.all([
+          directory.allows(identity, 'records.read'),
+          directory.allows(identity, 'actions.request'),
+          directory.allows(identity, 'approvals.decide'),
+          directory.allows(identity, 'members.manage'),
+        ]),
+      ),
+    ),
     [
       [true, false, false, false],
       [true, true, false, false],
@@ -187,18 +194,18 @@ test('built-in and tenant-local custom permissions preserve approval separation 
     name: 'Review work',
     permissions: ['actions.request', 'approvals.decide'],
   } as const;
-  directory.createRole(fixtureAdmin, { ...review, permissions: [...review.permissions] });
-  directory.assignRole(fixtureAdmin, reader.actor.id, review.id);
-  assert.equal(directory.allows(reader, 'approvals.decide'), true);
-  assert.equal(directory.allows(reader, 'members.manage'), false);
+  await directory.createRole(fixtureAdmin, { ...review, permissions: [...review.permissions] });
+  await directory.assignRole(fixtureAdmin, reader.actor.id, review.id);
+  assert.equal(await directory.allows(reader, 'approvals.decide'), true);
+  assert.equal(await directory.allows(reader, 'members.manage'), false);
   assert.equal(
-    directory.roles(other.tenantId).some(({ id }) => id === review.id),
+    (await directory.roles(other.tenantId)).some(({ id }) => id === review.id),
     false,
   );
-  assert.throws(() => directory.assignRole(fixtureAdmin, other.actor.id, review.id), {
+  await assert.rejects(() => directory.assignRole(fixtureAdmin, other.actor.id, review.id), {
     code: 'not_found',
   });
-  assert.throws(() => directory.removeMember(fixtureAdmin, fixtureAdmin.actor.id), {
+  await assert.rejects(() => directory.removeMember(fixtureAdmin, fixtureAdmin.actor.id), {
     code: 'forbidden',
   });
   const ownRequest = { requestedBy: reader.actor.id, approverId: reader.actor.id };
@@ -207,8 +214,8 @@ test('built-in and tenant-local custom permissions preserve approval separation 
     mayDecideApproval(true, reader.actor.id, { ...ownRequest, requestedBy: operator.actor.id }),
     true,
   );
-  const record = directory.requestExport(fixtureAdmin);
+  const record = await directory.requestExport(fixtureAdmin);
   assert.equal(record.status, 'requested');
-  assert.deepEqual(directory.exportRequests(fixtureAdmin), [record]);
-  assert.throws(() => directory.requestExport(operator), { code: 'forbidden' });
+  assert.deepEqual(await directory.exportRequests(fixtureAdmin), [record]);
+  await assert.rejects(() => directory.requestExport(operator), { code: 'forbidden' });
 });

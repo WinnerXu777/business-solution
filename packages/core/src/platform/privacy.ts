@@ -10,6 +10,7 @@ import {
   type PrivacyRecordSource,
   type RetentionHold,
   type RetentionHoldInput,
+  type RetentionPolicy,
 } from './retention.ts';
 
 export interface PrivacyRequestInput {
@@ -48,6 +49,7 @@ export interface PrivacyOptions {
 export class PrivacyService {
   private readonly requests: TenantRepository<PrivacyRequest>;
   private readonly holds: TenantRepository<RetentionHold>;
+  private readonly policyRows: TenantRepository<RetentionPolicy>;
   private readonly audit: PlatformAudit;
   private readonly options?: PrivacyOptions;
   private readonly now: () => string;
@@ -55,12 +57,14 @@ export class PrivacyService {
   constructor(
     requests: TenantRepository<PrivacyRequest>,
     holds: TenantRepository<RetentionHold>,
+    policyRows: TenantRepository<RetentionPolicy>,
     audit: PlatformAudit,
     options: PrivacyOptions | undefined,
     now: () => string,
   ) {
     this.requests = requests;
     this.holds = holds;
+    this.policyRows = policyRows;
     this.audit = audit;
     this.options = options;
     this.now = now;
@@ -146,11 +150,17 @@ export class PrivacyService {
 
       const records = await source.list(tenantId, request.subjectId);
       const holds = await this.holds.list(tenantId);
+      const policies = await this.policies(tenantId);
       const eligible = [];
       const blocked = [];
       for (const record of records) {
         if (record.tenantId !== tenantId || record.subjectId !== request.subjectId) continue;
-        const { holdIds, unclassified, minimumTime } = retentionFor(record, holds, instant(at));
+        const { holdIds, unclassified, minimumTime } = retentionFor(
+          record,
+          holds,
+          instant(at),
+          policies,
+        );
         const reasons: BlockReason[] = [];
         if (holdIds.length) reasons.push('hold');
         if (unclassified) reasons.push('unclassified');
@@ -193,19 +203,41 @@ export class PrivacyService {
     });
   }
 
-  policies() {
-    return structuredClone(retentionPolicies);
+  async policies(tenantId: string) {
+    const stored = new Map(
+      (await this.policyRows.list(tenantId)).map((policy) => [policy.dataClass, policy]),
+    );
+    return retentionPolicies.map((policy) => ({ ...(stored.get(policy.dataClass) ?? policy) }));
+  }
+
+  setPolicy(context: MutationContext, policy: RetentionPolicy) {
+    return this.audit.transaction(context.tenantId, async () => {
+      const baseline = retentionPolicies.find(({ dataClass }) => dataClass === policy.dataClass);
+      if (
+        !baseline ||
+        !Number.isSafeInteger(policy.minimumRetentionDays) ||
+        !Number.isSafeInteger(policy.purgeAfterDays) ||
+        policy.minimumRetentionDays < baseline.minimumRetentionDays ||
+        policy.purgeAfterDays < policy.minimumRetentionDays ||
+        policy.purgeAfterDays > 36500
+      )
+        throw new PlatformError('forbidden');
+      await this.policyRows.put(context.tenantId, policy.dataClass, policy);
+      await this.audit.record(context, 'platform.retention.policy.update');
+      return policy;
+    });
   }
 
   dryRun(tenantId: string, asOf?: string) {
     return this.audit.transaction(tenantId, async () => {
       const time = instant(asOf ?? this.now());
       const holds = await this.holds.list(tenantId);
+      const policies = await this.policies(tenantId);
       const records = await this.source().records.list(tenantId);
       const items = records
         .filter((record) => record.tenantId === tenantId)
         .map((record) => {
-          const { holdIds, unclassified, purgeAt } = retentionFor(record, holds, time);
+          const { holdIds, unclassified, purgeAt } = retentionFor(record, holds, time, policies);
           const status = holdIds.length
             ? 'held'
             : unclassified

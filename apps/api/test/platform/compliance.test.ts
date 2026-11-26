@@ -24,13 +24,13 @@ test('compliance endpoints enforce permissions, tenant scopes, payloads and outp
   });
   const reader = loadDemoFixtures().grants[2];
   const directory = services.directory;
-  const { tenant: other, adminInvite } = directory.provision({
+  const { tenant: other, adminInvite } = await directory.provision({
     name: 'Synthetic second tenant',
     region: 'ca-central-1',
     plan: { addOns: [] },
     adminEmail: 'other@spoolharbour.example',
   });
-  const member = directory.acceptInvite(other.id, adminInvite.token, {
+  const member = await directory.acceptInvite(other.id, adminInvite.token, {
     issuer: 'https://issuer.example',
     subject: 'foreign-admin',
     verifiedEmail: 'other@spoolharbour.example',

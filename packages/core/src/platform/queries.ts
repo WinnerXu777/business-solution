@@ -87,7 +87,10 @@ function page<Thing extends Position>(items: Thing[], filterKey: unknown[], opti
 }
 
 export class PlatformQueries {
-  private readonly gateway: { audit(): AuditEntry[]; usage(): UsageCounterEvent[] };
+  private readonly gateway: {
+    audit(tenantId: string): Promise<AuditEntry[]>;
+    usage(tenantId: string): Promise<UsageCounterEvent[]>;
+  };
   private readonly auditEntries: TenantRepository<AuditEntry>;
   private readonly entitlements: EntitlementStore;
 
@@ -104,7 +107,10 @@ export class PlatformQueries {
   async audit(tenantId: string, filters: AuditFilters = {}) {
     const { tool, actorId, state, from, to } = filters;
     const range = inRange(filters);
-    const entries = [...this.gateway.audit(), ...(await this.auditEntries.list(tenantId))].filter(
+    const entries = [
+      ...(await this.gateway.audit(tenantId)),
+      ...(await this.auditEntries.list(tenantId)),
+    ].filter(
       (row) =>
         row.tenantId === tenantId &&
         range(row) &&
@@ -115,20 +121,18 @@ export class PlatformQueries {
     return page(entries, ['audit', tenantId, tool, actorId, state, from, to], filters);
   }
 
-  private usageItems(tenantId: string, filters: UsageFilters) {
+  private async usageItems(tenantId: string, filters: UsageFilters) {
     const range = inRange(filters);
-    return this.gateway
-      .usage()
-      .filter(
-        (row) =>
-          row.tenantId === tenantId &&
-          range(row) &&
-          (filters.module === undefined || row.module === filters.module),
-      );
+    return (await this.gateway.usage(tenantId)).filter(
+      (row) =>
+        row.tenantId === tenantId &&
+        range(row) &&
+        (filters.module === undefined || row.module === filters.module),
+    );
   }
 
   async usage(tenantId: string, filters: UsageFilters = {}) {
-    const items = this.usageItems(tenantId, filters);
+    const items = await this.usageItems(tenantId, filters);
     const totals = (await this.entitlements.listing(tenantId, []))
       .filter(({ moduleId }) => filters.module === undefined || moduleId === filters.module)
       .map(({ moduleId: module, allowance }) => ({
@@ -139,8 +143,12 @@ export class PlatformQueries {
     return { items: items.toSorted(compare), totals };
   }
 
-  usagePage(tenantId: string, filters: UsageFilters & PageFilters = {}) {
+  async usagePage(tenantId: string, filters: UsageFilters & PageFilters = {}) {
     const { module, from, to } = filters;
-    return page(this.usageItems(tenantId, filters), ['usage', tenantId, module, from, to], filters);
+    return page(
+      await this.usageItems(tenantId, filters),
+      ['usage', tenantId, module, from, to],
+      filters,
+    );
   }
 }

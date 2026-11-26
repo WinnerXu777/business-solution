@@ -17,8 +17,13 @@ import document from './openapi.json' with { type: 'json' };
 interface ComplianceRoutes {
   base: string;
   services: PlatformServices;
-  context: (request: FastifyRequest, adminOnly?: boolean) => MutationContext;
-  requirePermission: (request: FastifyRequest, permission: Permission, sensitive?: boolean) => void;
+  context: (request: FastifyRequest) => MutationContext;
+  adminContext: (request: FastifyRequest) => Promise<MutationContext>;
+  requirePermission: (
+    request: FastifyRequest,
+    permission: Permission,
+    sensitive?: boolean,
+  ) => Promise<void>;
   requireOperator: (request: FastifyRequest) => void;
   validate: <Input>(
     request: FastifyRequest,
@@ -65,6 +70,7 @@ export function registerComplianceRoutes(
     base,
     services: { contacts, privacy, events },
     context,
+    adminContext,
     requirePermission,
     requireOperator,
     validate,
@@ -74,36 +80,36 @@ export function registerComplianceRoutes(
     return validate<Input>(request, inputs[name], request.body);
   }
 
-  function suppressionScope(request: FastifyRequest) {
+  async function suppressionScope(request: FastifyRequest) {
     const { scope } = validate<{ scope?: 'tenant' | 'platform' }>(
       request,
       inputs.SuppressionQuery,
       { ...(request.query as object) },
     );
     if (scope === 'platform') requireOperator(request);
-    else requirePermission(request, 'settings.manage', true);
+    else await requirePermission(request, 'settings.manage', true);
     return scope === 'platform';
   }
 
-  function person(request: FastifyRequest) {
-    requirePermission(request, 'platform.read');
+  async function person(request: FastifyRequest) {
+    await requirePermission(request, 'platform.read');
     const actor = context(request);
     if (actor.actor.kind !== 'person') throw new PlatformError('forbidden');
     return actor;
   }
 
   app.get(base + '/consents', async (request) =>
-    contacts.listConsents(context(request, true).tenantId),
+    contacts.listConsents((await adminContext(request)).tenantId),
   );
   app.post(base + '/consents', async (request, reply) => {
     const consent = await contacts.grant(
-      context(request, true),
+      await adminContext(request),
       body<ConsentInput>(request, 'ConsentInput'),
     );
     return reply.code(201).send(consent);
   });
   app.post<{ Params: { id: string } }>(base + '/consents/:id/withdraw', async (request) =>
-    contacts.withdraw(context(request, true), request.params.id),
+    contacts.withdraw(await adminContext(request), request.params.id),
   );
   app.post(
     base + '/consents/unsubscribe',
@@ -120,11 +126,11 @@ export function registerComplianceRoutes(
   );
 
   app.get(base + '/suppressions', { config: { platformAccess: true } }, async (request) => {
-    const platform = suppressionScope(request);
+    const platform = await suppressionScope(request);
     return contacts.listSuppressions(context(request).tenantId, platform);
   });
   app.post(base + '/suppressions', async (request, reply) => {
-    const platform = suppressionScope(request);
+    const platform = await suppressionScope(request);
     const suppression = await contacts.suppress(
       context(request),
       body<SuppressionInput>(request, 'SuppressionInput'),
@@ -133,38 +139,38 @@ export function registerComplianceRoutes(
     return reply.code(201).send(suppression);
   });
   app.post(base + '/contact-check', async (request) => {
-    const { tenantId } = context(request, true);
+    const { tenantId } = await adminContext(request);
     const { contactId, channel, purpose } = body<ContactInput>(request, 'ContactInput');
     return contacts.canContact(tenantId, contactId, channel, purpose);
   });
 
   app.get(base + '/privacy-requests', async (request) =>
-    privacy.list(context(request, true).tenantId),
+    privacy.list((await adminContext(request)).tenantId),
   );
   app.post(base + '/privacy-requests', async (request, reply) => {
     const result = await privacy.create(
-      context(request, true),
+      await adminContext(request),
       body<PrivacyRequestInput>(request, 'PrivacyRequestInput'),
     );
     return reply.code(201).send(result);
   });
   app.post<{ Params: { id: string } }>(base + '/privacy-requests/:id/verify', async (request) =>
     privacy.verify(
-      context(request, true),
+      await adminContext(request),
       request.params.id,
       body<VerificationInput>(request, 'PrivacyVerificationInput'),
     ),
   );
   app.post<{ Params: { id: string } }>(base + '/privacy-requests/:id/complete', async (request) =>
-    privacy.complete(context(request, true), request.params.id),
+    privacy.complete(await adminContext(request), request.params.id),
   );
 
   app.get(base + '/retention/policies', async (request) => {
-    context(request, true);
-    return privacy.policies();
+    const { tenantId } = await adminContext(request);
+    return privacy.policies(tenantId);
   });
   app.post(base + '/retention/dry-run', async (request) => {
-    const { tenantId } = context(request, true);
+    const { tenantId } = await adminContext(request);
     const { asOf } = validate<{ asOf?: string }>(
       request,
       inputs.RetentionDryRunInput,
@@ -174,34 +180,34 @@ export function registerComplianceRoutes(
   });
 
   app.get(base + '/webhooks', async (request) =>
-    events.listWebhooks(context(request, true).tenantId),
+    events.listWebhooks((await adminContext(request)).tenantId),
   );
   app.post(base + '/webhooks', async (request, reply) => {
     const hook = await events.createWebhook(
-      context(request, true),
+      await adminContext(request),
       body<WebhookInput>(request, 'WebhookInput'),
     );
     return reply.code(201).send(hook);
   });
   app.post<{ Params: { id: string } }>(base + '/webhooks/:id/test', async (request, reply) => {
-    const event = await events.testWebhook(context(request, true), request.params.id);
+    const event = await events.testWebhook(await adminContext(request), request.params.id);
     return reply.code(202).send(event);
   });
   app.get<{ Params: { id: string } }>(base + '/webhooks/:id/deliveries', async (request) =>
-    events.deliveries(context(request, true).tenantId, request.params.id),
+    events.deliveries((await adminContext(request)).tenantId, request.params.id),
   );
   app.post<{ Params: { id: string } }>(
     base + '/webhooks/deliveries/:id/replay',
     async (request, reply) => {
-      const delivery = await events.replay(context(request, true), request.params.id);
+      const delivery = await events.replay(await adminContext(request), request.params.id);
       return reply.code(202).send(delivery);
     },
   );
   app.get(base + '/notifications', async (request) => {
-    const { tenantId, actor } = person(request);
+    const { tenantId, actor } = await person(request);
     return events.notifications(tenantId, actor.id);
   });
   app.post<{ Params: { id: string } }>(base + '/notifications/:id/read', async (request) =>
-    events.markRead(person(request), request.params.id),
+    events.markRead(await person(request), request.params.id),
   );
 }

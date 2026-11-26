@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync, FastifyRequest } from 'fastify';
 import {
   PlatformError,
+  RepositoryConflict,
   type AuditFilters,
   type BindingInput,
   type ConnectionInput,
@@ -76,11 +77,11 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
   const base = '/platform/v1';
   const identities = new WeakMap<
     FastifyRequest,
-    NonNullable<ReturnType<typeof services.directory.resolve>>
+    NonNullable<Awaited<ReturnType<typeof services.directory.resolve>>>
   >();
   const sessions = new WeakMap<
     FastifyRequest,
-    NonNullable<ReturnType<PlatformAuth['sessions']['verify']>>
+    NonNullable<Awaited<ReturnType<PlatformAuth['sessions']['verify']>>>
   >();
   const {
     directory,
@@ -101,9 +102,9 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
       return;
     }
     const token = /^Bearer ([^\s,]+)$/i.exec(request.headers.authorization ?? '')?.[1];
-    const session = token && auth ? auth.sessions.verify(token) : undefined;
+    const session = token && auth ? await auth.sessions.verify(token) : undefined;
     const identity = auth ? session?.identity : token ? await verifyIdentity?.(token) : undefined;
-    const resolved = identity && directory.resolve(identity);
+    const resolved = identity && (await directory.resolve(identity));
     if (!resolved) {
       return reply.header('WWW-Authenticate', 'Bearer').code(401).send({ error: 'forbidden' });
     }
@@ -112,7 +113,7 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
   });
 
   app.setErrorHandler((error, request, reply) => {
-    if (error instanceof PlatformError) {
+    if (error instanceof PlatformError || error instanceof RepositoryConflict) {
       return reply.code(statusFor[error.code]).send({ error: error.code });
     }
     const clientError =
@@ -138,9 +139,8 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     return identityOf(request).tenant.id;
   }
 
-  function context(request: FastifyRequest, adminOnly = false): MutationContext {
+  function context(request: FastifyRequest): MutationContext {
     const { actor, tenant } = identityOf(request);
-    if (adminOnly) requirePermission(request, 'settings.manage', true);
     return {
       tenantId: tenant.id,
       actor: { id: actor.id, kind: actor.kind },
@@ -155,11 +155,20 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
       throw new PlatformError('forbidden');
   }
 
-  function requirePermission(request: FastifyRequest, permission: Permission, sensitive = false) {
+  async function requirePermission(
+    request: FastifyRequest,
+    permission: Permission,
+    sensitive = false,
+  ) {
     const { actor, tenant } = identityOf(request);
-    if (!directory.allows({ tenantId: tenant.id, actor }, permission))
+    if (!(await directory.allows({ tenantId: tenant.id, actor }, permission)))
       throw new PlatformError('forbidden');
     if (sensitive) requireStepUp(request);
+  }
+
+  async function adminContext(request: FastifyRequest) {
+    await requirePermission(request, 'settings.manage', true);
+    return context(request);
   }
 
   function requireOperator(request: FastifyRequest) {
@@ -172,7 +181,7 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     if (request.routeOptions.config.platformPublic || request.routeOptions.config.platformAccess)
       return;
     if (request.method === 'GET' || request.method === 'HEAD')
-      requirePermission(request, 'platform.read');
+      await requirePermission(request, 'platform.read');
   });
 
   registerAccessRoutes(app, {
@@ -189,6 +198,7 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     base,
     services,
     context,
+    adminContext,
     requirePermission,
     requireOperator,
     validate,
@@ -199,18 +209,18 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
   );
   app.get(base + '/workspaces', async (request) => directory.workspaces(tenantOf(request)));
   app.get<{ Params: { id: string } }>(base + '/workspaces/:id', async (request) => {
-    const workspace = directory
-      .workspaces(tenantOf(request))
-      .find(({ id }) => id === request.params.id);
+    const workspace = (await directory.workspaces(tenantOf(request))).find(
+      ({ id }) => id === request.params.id,
+    );
     if (!workspace) throw new PlatformError('not_found');
     return workspace;
   });
 
   app.get(base + '/modules', async (request) =>
-    entitlements.listing(tenantOf(request), gateway.usage()),
+    entitlements.listing(tenantOf(request), await gateway.usage(tenantOf(request))),
   );
   app.patch<{ Params: { moduleId: string } }>(base + '/modules/:moduleId', async (request) => {
-    const actor = context(request, true);
+    const actor = await adminContext(request);
     const { enabled } = validate<{ enabled: boolean }>(request, schemas.ModuleUpdate, request.body);
     return gateway.setModule(actor, request.params.moduleId, enabled);
   });
@@ -233,7 +243,7 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
   app.put<{ Params: { capability: string } }>(
     base + '/capabilities/:capability/binding',
     async (request) => {
-      const actor = context(request, true);
+      const actor = await adminContext(request);
       const input = validate<BindingInput>(request, schemas.BindingUpdate, request.body);
       return bindings.bind(actor, request.params.capability, input);
     },
@@ -272,20 +282,20 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
 
   app.get(base + '/connections', async (request) => connections.list(tenantOf(request)));
   app.post(base + '/connections', async (request, reply) => {
-    const actor = context(request, true);
+    const actor = await adminContext(request);
     const input = validate<ConnectionInput>(request, schemas.ConnectionCreate, request.body);
     const connection = await connections.create(actor, input);
     return reply.code(201).send(connection);
   });
   app.delete<{ Params: { id: string } }>(base + '/connections/:id', async (request, reply) => {
-    await connections.delete(context(request, true), request.params.id);
+    await connections.delete(await adminContext(request), request.params.id);
     return reply.code(204).send();
   });
 
   app.get(base + '/billing/plan', async (request) => billing.plan(tenantOf(request)));
   app.get(base + '/billing/skus', async () => billing.skus());
   app.post(base + '/billing/plan', async (request) => {
-    const actor = context(request, true);
+    const actor = await adminContext(request);
     const input = validate<PlanInput>(request, schemas.BillingPlanUpdate, request.body);
     return billing.changePlan(actor, input);
   });
@@ -294,7 +304,7 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     billing.invoice(tenantOf(request), request.params.id),
   );
   app.post<{ Params: { id: string } }>(base + '/billing/invoices/:id/finalize', async (request) =>
-    billing.finalize(context(request, true), request.params.id),
+    billing.finalize(await adminContext(request), request.params.id),
   );
 
   app.get(base + '/credentials', async (request) =>
@@ -303,14 +313,14 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
       .map(({ ref }) => ({ ref })),
   );
   app.post(base + '/credentials', async (request, reply) => {
-    const actor = context(request, true);
+    const actor = await adminContext(request);
     const input = validate<CredentialInput>(request, credentialCreateSchema, request.body);
     if (!providers.get(input.capability, input.providerId)) throw new PlatformError('not_found');
     const { ref } = await vault.create(actor, input);
     return reply.code(201).send({ ref });
   });
   app.post<{ Params: { ref: string } }>(base + '/credentials/:ref/rotate', async (request) => {
-    const actor = context(request, true);
+    const actor = await adminContext(request);
     const { secret } = validate<{ secret: string }>(
       request,
       schemas.CredentialRotate,
@@ -320,7 +330,7 @@ export const platformRoutes: FastifyPluginAsync<PlatformOptions> = async (
     return { ref };
   });
   app.delete<{ Params: { ref: string } }>(base + '/credentials/:ref', async (request, reply) => {
-    await vault.revoke(context(request, true), request.params.ref);
+    await vault.revoke(await adminContext(request), request.params.ref);
     return reply.code(204).send();
   });
 

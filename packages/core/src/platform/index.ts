@@ -10,6 +10,7 @@ import { ContactLedger, type ContactPolicy } from './contacts.ts';
 import { EntitlementStore } from './entitlements.ts';
 import { PlatformEventBus, type WebhookTransport } from './events.ts';
 import { PlatformGateway } from './gateway.ts';
+import type { PlatformGovernance } from './governance-adapter.ts';
 import { fixtureAdmin, TenantDirectory } from './identity.ts';
 import { PrivacyService, type PrivacyOptions } from './privacy.ts';
 import {
@@ -20,7 +21,7 @@ import {
 } from './providers.ts';
 import { PlatformQueries } from './queries.ts';
 import {
-  MemoryTenantRepository,
+  MemoryPlatformPersistence,
   type PlatformPersistence,
   type TenantRepository,
 } from './repository.ts';
@@ -68,7 +69,9 @@ export {
 export { PlatformQueries, type AuditFilters, type UsageFilters } from './queries.ts';
 export { PostgresPlatformPersistence, type QueryPool } from './postgres.ts';
 export {
+  MemoryPlatformPersistence,
   MemoryTenantRepository,
+  RepositoryConflict,
   type PlatformPersistence,
   type TenantRepository,
 } from './repository.ts';
@@ -76,7 +79,7 @@ export { type CredentialAccessor, type CredentialInput } from './vault.ts';
 
 interface PlatformOptions {
   fixtures?: DemoFixtures;
-  gateway?: Pick<GovernedGateway, 'call' | 'signApproval' | 'audit' | 'usage'>;
+  gateway?: PlatformGovernance;
   now?: () => string;
   auditSink?: AuditSink;
   dataClasses?: typeof fixtureDataClasses;
@@ -137,12 +140,9 @@ export function createPlatformServices(options: PlatformOptions = {}) {
       'Transactional platform persistence must own all state and audit repositories.',
     );
   }
+  const persistence = options.persistence ?? new MemoryPlatformPersistence();
   function repo<Row>(collection: string, override?: TenantRepository<Row>) {
-    return (
-      options.persistence?.repository<Row>(collection) ??
-      override ??
-      new MemoryTenantRepository<Row>()
-    );
+    return override ?? persistence.repository<Row>(collection);
   }
   const auditEntries = repo<AuditEntry>('audit', options.repositories?.audit);
   const localSink = repositoryAuditSink(auditEntries);
@@ -154,9 +154,9 @@ export function createPlatformServices(options: PlatformOptions = {}) {
       },
     },
     now,
-    options.persistence,
+    persistence,
   );
-  const directory = new TenantDirectory(fixtures, now);
+  const directory = new TenantDirectory(fixtures, now, persistence, audit);
   const entitlements = new EntitlementStore(
     fixtures.entitlements,
     repo('entitlements', options.repositories?.entitlements),
@@ -176,6 +176,8 @@ export function createPlatformServices(options: PlatformOptions = {}) {
   const events = new PlatformEventBus(
     repo('platform_events'),
     repo('webhooks'),
+    persistence.repository('webhook_deliveries'),
+    repo('notifications'),
     audit,
     now,
     masterKey,
@@ -217,6 +219,7 @@ export function createPlatformServices(options: PlatformOptions = {}) {
   const privacy = new PrivacyService(
     repo('privacy_requests'),
     repo('retention_holds'),
+    repo('retention_policies'),
     audit,
     options.privacy,
     now,
@@ -274,6 +277,8 @@ export function createPlatformServices(options: PlatformOptions = {}) {
     entitlements,
     audit,
     now,
+    repo('gateway_requests'),
+    repo('approval_previews'),
     options.fixtureUsageBridge === false ? undefined : billing,
     events,
   );
