@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
-import { loadDemoFixtures, type Actor, type ActorGrant } from '@bs/contracts';
-import { PlatformError } from './audit.ts';
+import { loadDemoFixtures, type Actor, type ActorGrant, type AuditEntry } from '@bs/contracts';
+import { PlatformAudit, PlatformError, type MutationContext } from './audit.ts';
+import { MemoryPlatformPersistence, type PlatformPersistence } from './repository.ts';
 import { randomToken, tokenDigest } from './auth-crypto.ts';
 import type { PlanInput } from './billing.ts';
 import { isSku } from './billing-catalog.ts';
@@ -52,13 +53,10 @@ interface TenantState {
   tenant: Tenant;
   sessionVersion: number;
   plan?: PlanInput;
-  members: Map<string, Membership>;
-  roles: Map<string, RoleDefinition>;
-  invites: Map<string, Invite>;
-  exports: Map<string, ExportRequest>;
 }
 
 interface Invite {
+  digest: string;
   roleId: string;
   email: string;
   expiresAt: number;
@@ -99,242 +97,364 @@ function emailAddress(email: string) {
   return email.toLowerCase();
 }
 
-/** Synchronous process-local identity store. Mutation methods require a trusted caller. */
-export class TenantDirectory {
-  private readonly tenants = new Map<string, TenantState>();
-  private readonly users = new Map<string, User>();
-  private readonly subjects = new Map<string, string>();
-  private readonly linkedActors = new Map<string, string>();
-  private readonly now: () => string;
-  private nextVersion = 1;
+interface Workspace {
+  id: string;
+  name: string;
+}
 
-  constructor(fixtures = loadDemoFixtures(), now = () => new Date().toISOString()) {
+type StoredUser = User & { principal?: string };
+type StoredMembership = Omit<Membership, 'user'>;
+
+function evidence(identity: PlatformIdentity, context?: MutationContext): MutationContext {
+  const supplied = context ?? ('source' in identity ? (identity as MutationContext) : undefined);
+  return supplied
+    ? { ...supplied, ...identity }
+    : { ...identity, source: 'rest', traceId: randomUUID(), correlationId: randomUUID() };
+}
+
+export class TenantDirectory {
+  readonly persistence: PlatformPersistence;
+  private readonly tenants;
+  private readonly workspaceRows;
+  private readonly users;
+  private readonly subjects;
+  private readonly memberships;
+  private readonly roleRows;
+  private readonly invites;
+  private readonly exports;
+  readonly sessionAudit: PlatformAudit;
+  private readonly fixtures;
+  private readonly now: () => string;
+
+  constructor(
+    fixtures = loadDemoFixtures(),
+    now = () => new Date().toISOString(),
+    persistence: PlatformPersistence = new MemoryPlatformPersistence(),
+    audit?: PlatformAudit,
+  ) {
+    this.persistence = persistence;
+    this.fixtures = structuredClone(fixtures);
     this.now = now;
-    for (const { id, name } of fixtures.workspaces) this.addTenant(id, name, fixtures.asOf);
-    const grants = this.tenants.has(fixtureAdmin.tenantId)
-      ? [...fixtures.grants, fixtureAdmin]
-      : fixtures.grants;
-    for (const { tenantId, actor, role } of grants) {
-      const displayName = displayNames[actor.id] ?? actor.id;
-      this.users.set(actor.id, { actor: { ...actor }, displayName });
-      this.addMember(this.tenantState(tenantId), actor.id, role);
-    }
+    this.tenants = persistence.repository<TenantState>('tenants');
+    this.workspaceRows = persistence.repository<Workspace>('workspaces');
+    this.users = persistence.repository<StoredUser>('users');
+    this.subjects = persistence.repository<{ actorId: string }>('oidc_subjects');
+    this.memberships = persistence.repository<StoredMembership>('memberships');
+    this.roleRows = persistence.repository<RoleDefinition>('roles');
+    this.invites = persistence.repository<Invite>('invites');
+    this.exports = persistence.repository<ExportRequest>('tenant_exports');
+    const entries = persistence.repository<AuditEntry>('audit');
+    this.sessionAudit =
+      audit ??
+      new PlatformAudit(
+        { append: (entry) => entries.put(entry.tenantId, entry.id, entry) },
+        now,
+        persistence,
+      );
   }
 
-  private addTenant(id: string, name: string, createdAt: string, plan?: PlanInput): TenantState {
-    const state: TenantState = {
-      tenant: { id, name, region: nativeTenantRegion, status: 'active', createdAt },
-      plan,
-      sessionVersion: 1,
-      members: new Map(),
-      roles: new Map(builtInRoles().map((role) => [role.id, role])),
-      invites: new Map(),
-      exports: new Map(),
-    };
-    this.tenants.set(id, state);
+  private async initialize(id: string, name: string, createdAt: string, plan?: PlanInput) {
+    const tenant: Tenant = { id, name, region: nativeTenantRegion, status: 'active', createdAt };
+    const state = { tenant, plan, sessionVersion: 1 };
+    await this.tenants.write(id, id, state, null);
+    await this.workspaceRows.write(id, id, { id, name }, null);
+    for (const role of builtInRoles()) await this.roleRows.write(id, role.id, role, null);
     return state;
   }
 
-  private tenantState(tenantId: string, active = true) {
-    const state = this.tenants.get(tenantId);
+  private async state(tenantId: string) {
+    const stored = await this.tenants.get(tenantId, tenantId);
+    if (stored) return stored;
+    const workspace = this.fixtures.workspaces.find(({ id }) => id === tenantId);
+    if (!workspace) return;
+    return this.persistence.transaction(tenantId, async () => {
+      const current = await this.tenants.get(tenantId, tenantId);
+      if (current) return current;
+      const state = await this.initialize(tenantId, workspace.name, this.fixtures.asOf);
+      const grants =
+        tenantId === fixtureAdmin.tenantId
+          ? [...this.fixtures.grants, fixtureAdmin]
+          : this.fixtures.grants;
+      for (const { tenantId: grantTenant, actor, role } of grants) {
+        if (grantTenant !== tenantId) continue;
+        await this.users.write(
+          tenantId,
+          actor.id,
+          { actor, displayName: displayNames[actor.id] ?? actor.id },
+          null,
+        );
+        await this.memberships.write(tenantId, actor.id, { id: actor.id, role, version: 1 }, null);
+      }
+      return state;
+    });
+  }
+
+  private async tenantState(tenantId: string, active = true) {
+    const state = await this.state(tenantId);
     if (!state || (active && state.tenant.status !== 'active'))
       throw new PlatformError('not_found');
     return state;
   }
 
-  private addMember(state: TenantState, actorId: string, role: string) {
-    const member = {
-      id: actorId,
-      role,
-      user: this.users.get(actorId)!,
-      version: this.nextVersion++,
-    };
-    state.members.set(actorId, member);
-    return member;
+  private async membership(tenantId: string, id: string): Promise<Membership | undefined> {
+    const member = await this.memberships.get(tenantId, id);
+    const user = member && (await this.users.get(tenantId, id));
+    if (member && user)
+      return { ...member, user: { actor: user.actor, displayName: user.displayName } };
   }
 
-  workspaces(tenantId: string) {
-    const tenant = this.tenants.get(tenantId)?.tenant;
-    return tenant?.status === 'active' ? [{ id: tenant.id, name: tenant.name }] : [];
+  private async member({ tenantId, actor }: PlatformIdentity) {
+    const state = await this.state(tenantId);
+    if (state?.tenant.status !== 'active') return;
+    const member = await this.membership(tenantId, actor.id);
+    return member?.user.actor.kind === actor.kind ? member : undefined;
+  }
+
+  async workspaces(tenantId: string) {
+    if ((await this.state(tenantId))?.tenant.status !== 'active') return [];
+    return this.workspaceRows.list(tenantId);
   }
 
   resolve(identity: PlatformIdentity) {
-    const member = this.member(identity);
-    if (!member) return;
-    const workspaces = this.workspaces(identity.tenantId);
-    return {
-      tenant: workspaces[0],
-      actor: { ...member.user.actor, displayName: member.user.displayName },
-      role: member.role,
-      workspaces,
-    };
-  }
-
-  private member({ tenantId, actor }: PlatformIdentity) {
-    const state = this.tenants.get(tenantId);
-    const member = state?.members.get(actor.id);
-    if (state?.tenant.status === 'active' && member?.user.actor.kind === actor.kind) return member;
+    return this.persistence.transaction(identity.tenantId, async () => {
+      const member = await this.member(identity);
+      if (!member) return;
+      const workspaces = await this.workspaces(identity.tenantId);
+      return {
+        tenant: workspaces[0],
+        actor: { ...member.user.actor, displayName: member.user.displayName },
+        role: member.role,
+        workspaces,
+      };
+    });
   }
 
   sessionStamp(identity: PlatformIdentity) {
-    const member = this.member(identity);
-    if (member)
-      return {
-        membershipVersion: member.version,
-        tenantVersion: this.tenantState(identity.tenantId).sessionVersion,
-      };
+    return this.persistence.transaction(identity.tenantId, async () => {
+      const member = await this.member(identity);
+      if (member)
+        return {
+          membershipVersion: member.version,
+          tenantVersion: (await this.tenantState(identity.tenantId)).sessionVersion,
+        };
+    });
   }
 
-  activeVersion(tenantId: string) {
-    const state = this.tenants.get(tenantId);
+  async activeVersion(tenantId: string) {
+    const state = await this.state(tenantId);
     return state?.tenant.status === 'active' ? state.sessionVersion : undefined;
   }
 
   allows(identity: PlatformIdentity, permission: Permission) {
-    const member = this.member(identity);
-    return member
-      ? hasPermissions(this.tenantState(identity.tenantId).roles.get(member.role), permission)
-      : false;
+    return this.persistence.transaction(identity.tenantId, async () => {
+      const member = await this.member(identity);
+      return member
+        ? hasPermissions(await this.roleRows.get(identity.tenantId, member.role), permission)
+        : false;
+    });
   }
 
-  linkUser(actorId: string, issuer: string, subject: string) {
-    const key = oidcKey(issuer, subject);
-    if (
-      !this.users.has(actorId) ||
-      this.users.get(actorId)?.actor.kind !== 'person' ||
-      (this.subjects.has(key) && this.subjects.get(key) !== actorId) ||
-      (this.linkedActors.has(actorId) && this.linkedActors.get(actorId) !== key)
-    )
-      throw new PlatformError('forbidden');
-    this.subjects.set(key, actorId);
-    this.linkedActors.set(actorId, key);
+  linkUser(tenantId: string, actorId: string, issuer: string, subject: string) {
+    return this.persistence.transaction(tenantId, async () => {
+      await this.tenantState(tenantId);
+      const key = tokenDigest(oidcKey(issuer, subject));
+      const user = await this.users.get(tenantId, actorId);
+      const linked = await this.subjects.get(tenantId, key);
+      if (
+        user?.actor.kind !== 'person' ||
+        (linked && linked.actorId !== actorId) ||
+        (user.principal && user.principal !== key)
+      )
+        throw new PlatformError('forbidden');
+      if (linked) return;
+      await this.subjects.write(tenantId, key, { actorId }, null);
+      await this.users.put(tenantId, actorId, { ...user, principal: key });
+      await this.sessionAudit.record(
+        evidence({ tenantId, actor: user.actor }),
+        'platform.user.link',
+        'ok',
+        actorId,
+      );
+    });
   }
 
-  userFor({ issuer, subject }: OidcPrincipal) {
-    const id = this.subjects.get(oidcKey(issuer, subject));
-    return id ? structuredClone(this.users.get(id)) : undefined;
+  async userFor(tenantId: string, { issuer, subject }: OidcPrincipal) {
+    const linked = await this.subjects.get(tenantId, tokenDigest(oidcKey(issuer, subject)));
+    const user = linked && (await this.users.get(tenantId, linked.actorId));
+    if (user) return { actor: user.actor, displayName: user.displayName };
   }
 
-  members(tenantId: string) {
-    return structuredClone([...this.tenantState(tenantId).members.values()]);
+  async members(tenantId: string) {
+    await this.tenantState(tenantId);
+    const members = await this.memberships.list(tenantId);
+    return (await Promise.all(members.map(({ id }) => this.membership(tenantId, id)))).filter(
+      (member) => member !== undefined,
+    );
   }
 
-  roles(tenantId: string) {
-    return structuredClone([...this.tenantState(tenantId).roles.values()]);
+  async roles(tenantId: string) {
+    await this.tenantState(tenantId);
+    return this.roleRows.list(tenantId);
   }
 
   createRole(
     context: PlatformIdentity,
     input: { id: string; name: string; permissions: Permission[] },
   ) {
-    const state = this.tenantState(context.tenantId);
-    const name = input.name.trim();
-    if (
-      !this.allows(context, 'roles.manage') ||
-      !idPattern.test(input.id) ||
-      state.roles.has(input.id) ||
-      !name ||
-      name.length > 120 ||
-      input.permissions.length === 0 ||
-      input.permissions.some(
-        (permission) =>
-          !permissions.includes(permission) ||
-          (this.member(context)?.role !== 'admin' && !this.allows(context, permission)),
+    return this.persistence.transaction(context.tenantId, async () => {
+      const { tenantId } = context;
+      await this.tenantState(tenantId);
+      const name = input.name.trim();
+      const member = await this.member(context);
+      const allowed = await Promise.all(
+        input.permissions.map(
+          async (permission) =>
+            permissions.includes(permission) &&
+            (member?.role === 'admin' || (await this.allows(context, permission))),
+        ),
+      );
+      if (
+        !(await this.allows(context, 'roles.manage')) ||
+        !idPattern.test(input.id) ||
+        (await this.roleRows.get(tenantId, input.id)) ||
+        !name ||
+        name.length > 120 ||
+        !allowed.length ||
+        allowed.includes(false)
       )
-    )
-      throw new PlatformError('forbidden');
-    const role = {
-      id: input.id,
-      name,
-      permissions: [...new Set(input.permissions)],
-      builtIn: false,
-    };
-    state.roles.set(role.id, role);
-    return structuredClone(role);
+        throw new PlatformError('forbidden');
+      const role = {
+        id: input.id,
+        name,
+        permissions: [...new Set(input.permissions)],
+        builtIn: false,
+      };
+      await this.roleRows.write(tenantId, role.id, role, null);
+      await this.sessionAudit.record(evidence(context), 'platform.role.create', 'ok', role.id);
+      return role;
+    });
   }
 
-  private delegable(context: PlatformIdentity, roleId: string) {
-    const role = this.tenantState(context.tenantId).roles.get(roleId);
+  private async delegable(context: PlatformIdentity, roleId: string) {
+    await this.tenantState(context.tenantId);
+    const role = await this.roleRows.get(context.tenantId, roleId);
     if (!role) throw new PlatformError('not_found');
     if (
-      !this.allows(context, 'members.manage') ||
-      (this.member(context)?.role !== 'admin' &&
+      !(await this.allows(context, 'members.manage')) ||
+      ((await this.member(context))?.role !== 'admin' &&
         (role.id === 'admin' ||
-          role.permissions.some((permission) => !this.allows(context, permission))))
+          (
+            await Promise.all(
+              role.permissions.map((permission) => this.allows(context, permission)),
+            )
+          ).includes(false)))
     )
       throw new PlatformError('forbidden');
-    return role;
   }
 
-  private target(context: PlatformIdentity, id: string) {
-    const state = this.tenantState(context.tenantId);
-    const member = state.members.get(id);
+  private async target(context: PlatformIdentity, id: string) {
+    await this.tenantState(context.tenantId);
+    const member = await this.membership(context.tenantId, id);
     if (!member) throw new PlatformError('not_found');
-    this.delegable(context, member.role);
-    return { state, member };
+    await this.delegable(context, member.role);
+    return member;
   }
 
-  private checkAdminRemains(state: TenantState, member: Membership) {
+  private async checkAdminRemains(tenantId: string, member: Membership) {
     if (
       member.role === 'admin' &&
-      ![...state.members.values()].some(({ id, role }) => id !== member.id && role === 'admin')
+      !(await this.memberships.list(tenantId)).some(
+        ({ id, role }) => id !== member.id && role === 'admin',
+      )
     )
       throw new PlatformError('forbidden');
   }
 
   assignRole(context: PlatformIdentity, id: string, roleId: string) {
-    const { state, member } = this.target(context, id);
-    this.delegable(context, roleId);
-    if (member.role === roleId) return structuredClone(member);
-    this.checkAdminRemains(state, member);
-    return structuredClone(this.addMember(state, id, roleId));
+    return this.persistence.transaction(context.tenantId, async () => {
+      const member = await this.target(context, id);
+      await this.delegable(context, roleId);
+      if (member.role === roleId) return member;
+      await this.checkAdminRemains(context.tenantId, member);
+      const next = { id, role: roleId, version: member.version + 1 };
+      await this.memberships.put(context.tenantId, id, next);
+      await this.sessionAudit.record(evidence(context), 'platform.member.assign', 'ok', id);
+      return { ...next, user: member.user };
+    });
   }
 
   removeMember(context: PlatformIdentity, id: string) {
-    const { state, member } = this.target(context, id);
-    this.checkAdminRemains(state, member);
-    state.members.delete(id);
+    return this.persistence.transaction(context.tenantId, async () => {
+      const member = await this.target(context, id);
+      await this.checkAdminRemains(context.tenantId, member);
+      // Keep the last membership epoch after deletion so re-enrollment cannot revive old sessions.
+      await this.persistence
+        .repository<number>('membership_epochs')
+        .put(context.tenantId, id, member.version);
+      await this.memberships.delete(context.tenantId, id);
+      await this.sessionAudit.record(evidence(context), 'platform.member.remove', 'ok', id);
+    });
   }
 
   createInvite(context: PlatformIdentity, email: string, roleId: string) {
-    this.delegable(context, roleId);
-    return this.invite(this.tenantState(context.tenantId), emailAddress(email), roleId);
+    return this.persistence.transaction(context.tenantId, async () => {
+      await this.delegable(context, roleId);
+      const invite = await this.invite(context.tenantId, emailAddress(email), roleId);
+      await this.sessionAudit.record(evidence(context), 'platform.invite.create');
+      return invite;
+    });
   }
 
-  private invite(state: TenantState, email: string, roleId: string) {
-    const instant = Date.parse(this.now());
-    for (const [key, invite] of state.invites) {
-      if (invite.expiresAt <= instant) state.invites.delete(key);
-    }
+  private async invite(tenantId: string, email: string, roleId: string) {
     const token = randomToken();
+    const instant = Date.parse(this.now());
     const expiresAt = instant + inviteLifetime;
-    state.invites.set(tokenDigest(token), { roleId, email, expiresAt });
+    for (const invite of await this.invites.list(tenantId)) {
+      if (invite.expiresAt <= instant) await this.invites.delete(tenantId, invite.digest);
+    }
+    const digest = tokenDigest(token);
+    await this.invites.write(tenantId, digest, { digest, roleId, email, expiresAt }, null);
     return { token, expiresAt: new Date(expiresAt).toISOString() };
   }
 
   acceptInvite(tenantId: string, token: string, principal: OidcPrincipal) {
-    const state = this.tenantState(tenantId);
-    const key = tokenDigest(token);
-    const invite = state.invites.get(key);
-    if (
-      !invite ||
-      invite.expiresAt <= Date.parse(this.now()) ||
-      principal.verifiedEmail?.toLowerCase() !== invite.email
-    )
-      throw new PlatformError('not_found');
-    let user = this.userFor(principal);
-    if (user && state.members.has(user.actor.id)) throw new PlatformError('forbidden');
-    if (!user) {
-      const id = 'actor-' + randomUUID();
-      user = { actor: { id, kind: 'person' }, displayName: id };
-      this.users.set(user.actor.id, user);
-      this.linkUser(user.actor.id, principal.issuer, principal.subject);
-    }
-    state.invites.delete(key);
-    return structuredClone(this.addMember(state, user.actor.id, invite.roleId));
+    return this.persistence.transaction(tenantId, async () => {
+      await this.tenantState(tenantId);
+      const key = tokenDigest(token);
+      const invite = await this.invites.get(tenantId, key);
+      if (
+        !invite ||
+        invite.expiresAt <= Date.parse(this.now()) ||
+        principal.verifiedEmail?.toLowerCase() !== invite.email
+      )
+        throw new PlatformError('not_found');
+      let user = await this.userFor(tenantId, principal);
+      if (user && (await this.memberships.get(tenantId, user.actor.id)))
+        throw new PlatformError('forbidden');
+      if (!user) {
+        const id = 'actor-' + randomUUID();
+        user = { actor: { id, kind: 'person' }, displayName: id };
+        await this.users.write(tenantId, id, user, null);
+        await this.linkUser(tenantId, id, principal.issuer, principal.subject);
+      }
+      const id = user.actor.id;
+      const prior = await this.persistence
+        .repository<number>('membership_epochs')
+        .get(tenantId, id);
+      const member = { id, role: invite.roleId, version: (prior ?? 0) + 1 };
+      await this.memberships.write(tenantId, id, member, null);
+      await this.invites.delete(tenantId, key);
+      await this.sessionAudit.record(
+        evidence({ tenantId, actor: user.actor }),
+        'platform.invite.accept',
+        'ok',
+        id,
+      );
+      return { ...member, user };
+    });
   }
 
-  provision(input: TenantInput) {
+  async provision(input: TenantInput, context?: MutationContext) {
     const name = input.name.trim();
     const email = emailAddress(input.adminEmail);
     const { addOns, overageLimitCents = 0 } = input.plan;
@@ -347,45 +467,65 @@ export class TenantDirectory {
       overageLimitCents < 0
     )
       throw new PlatformError('forbidden');
-    const state = this.addTenant('tenant-' + randomUUID(), name, this.now(), {
-      addOns: [...new Set(addOns)].sort(),
-      overageLimitCents,
+    const id = 'tenant-' + randomUUID();
+    return this.persistence.transaction(id, async () => {
+      const { tenant } = await this.initialize(id, name, this.now(), {
+        addOns: [...new Set(addOns)].sort(),
+        overageLimitCents,
+      });
+      const adminInvite = await this.invite(id, email, 'admin');
+      await this.sessionAudit.record(
+        evidence({ tenantId: id, actor: context?.actor ?? fixtureAdmin.actor }, context),
+        'platform.tenant.provision',
+        'ok',
+        id,
+      );
+      return { tenant, adminInvite };
     });
-    return { tenant: { ...state.tenant }, adminInvite: this.invite(state, email, 'admin') };
   }
 
-  initialPlan(tenantId: string) {
-    const state = this.tenants.get(tenantId);
-    return state?.plan
-      ? { ...structuredClone(state.plan), createdAt: state.tenant.createdAt }
-      : undefined;
+  async initialPlan(tenantId: string) {
+    const state = await this.tenants.get(tenantId, tenantId);
+    return state?.plan ? { ...state.plan, createdAt: state.tenant.createdAt } : undefined;
   }
 
-  setTenantStatus(tenantId: string, status: Tenant['status']) {
-    const state = this.tenantState(tenantId, false);
-    if (state.tenant.status !== status) {
-      state.tenant.status = status;
-      state.sessionVersion++;
-    }
-    return { ...state.tenant };
+  setTenantStatus(tenantId: string, status: Tenant['status'], context?: MutationContext) {
+    return this.persistence.transaction(tenantId, async () => {
+      const state = await this.tenantState(tenantId, false);
+      if (state.tenant.status !== status) {
+        state.tenant.status = status;
+        state.sessionVersion++;
+        await this.tenants.put(tenantId, tenantId, state);
+        await this.sessionAudit.record(
+          evidence({ tenantId, actor: context?.actor ?? fixtureAdmin.actor }, context),
+          'platform.tenant.' + status,
+          'ok',
+          tenantId,
+        );
+      }
+      return state.tenant;
+    });
   }
 
   requestExport(context: PlatformIdentity) {
-    if (!this.allows(context, 'exports.request')) throw new PlatformError('forbidden');
-    const { tenantId, actor } = context;
-    const record: ExportRequest = {
-      id: 'export-' + randomUUID(),
-      tenantId,
-      requestedBy: actor.id,
-      requestedAt: this.now(),
-      status: 'requested',
-    };
-    this.tenantState(tenantId).exports.set(record.id, record);
-    return { ...record };
+    return this.persistence.transaction(context.tenantId, async () => {
+      if (!(await this.allows(context, 'exports.request'))) throw new PlatformError('forbidden');
+      const { tenantId, actor } = context;
+      const record: ExportRequest = {
+        id: 'export-' + randomUUID(),
+        tenantId,
+        requestedBy: actor.id,
+        requestedAt: this.now(),
+        status: 'requested',
+      };
+      await this.exports.write(tenantId, record.id, record, null);
+      await this.sessionAudit.record(evidence(context), 'platform.tenant.export', 'ok', record.id);
+      return record;
+    });
   }
 
-  exportRequests(context: PlatformIdentity) {
-    if (!this.allows(context, 'exports.request')) throw new PlatformError('forbidden');
-    return structuredClone([...this.tenantState(context.tenantId).exports.values()]);
+  async exportRequests(context: PlatformIdentity) {
+    if (!(await this.allows(context, 'exports.request'))) throw new PlatformError('forbidden');
+    return this.exports.list(context.tenantId);
   }
 }

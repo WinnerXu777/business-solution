@@ -300,7 +300,9 @@ test('approval routes sign through governance, reject pending grants and expose 
   assert.equal(signedPo.statusCode, 200);
   assert.equal(signedPo.json().state, 'consumed');
   assert.ok(
-    gateway.audit().some(({ tool, state }) => tool === 'purchase.order.approve' && state === 'ok'),
+    (await gateway.audit(fixtureAdmin.tenantId)).some(
+      ({ tool, state }) => tool === 'purchase.order.approve' && state === 'ok',
+    ),
   );
   assert.equal((await request('/approvals/' + po + '/sign', 'approver', 'POST')).statusCode, 409);
 

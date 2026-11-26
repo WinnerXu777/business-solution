@@ -3,7 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { PlatformAudit, PlatformError, type MutationContext } from './audit.ts';
 import { instant, iso } from './compliance-time.ts';
 import type { ContactChannel, ContactPurpose } from './contacts.ts';
-import type { TenantRepository } from './repository.ts';
+import type { TenantRepository, VersionedTenantRepository } from './repository.ts';
 
 interface EventPayloads {
   'record.changed': {
@@ -62,8 +62,17 @@ interface Delivery {
 
 interface EventRow {
   event: PlatformEvent;
-  deliveries: Delivery[];
-  notifications: { userId: string; readAt?: string }[];
+  notifyUserIds: string[];
+}
+
+interface Notification {
+  eventId: string;
+  userId: string;
+  readAt?: string;
+}
+
+function notificationId(eventId: string, userId: string) {
+  return JSON.stringify([eventId, userId]);
 }
 
 export type StoredPlatformEvent = EventRow;
@@ -157,6 +166,8 @@ function queued(eventId: string, webhookId: string, at: string): Delivery {
 export class PlatformEventBus {
   private readonly events: TenantRepository<EventRow>;
   private readonly webhooks: TenantRepository<Webhook>;
+  private readonly deliveryRows: VersionedTenantRepository<Delivery>;
+  private readonly notificationRows: TenantRepository<Notification>;
   private readonly audit: PlatformAudit;
   private readonly now: () => string;
   private readonly signingKey?: Uint8Array;
@@ -165,6 +176,8 @@ export class PlatformEventBus {
   constructor(
     events: TenantRepository<EventRow>,
     webhooks: TenantRepository<Webhook>,
+    deliveryRows: VersionedTenantRepository<Delivery>,
+    notificationRows: TenantRepository<Notification>,
     audit: PlatformAudit,
     now: () => string,
     signingKey?: Uint8Array,
@@ -172,6 +185,8 @@ export class PlatformEventBus {
   ) {
     this.events = events;
     this.webhooks = webhooks;
+    this.deliveryRows = deliveryRows;
+    this.notificationRows = notificationRows;
     this.audit = audit;
     this.now = now;
     this.signingKey = signingKey && Buffer.from(signingKey);
@@ -220,6 +235,26 @@ export class PlatformEventBus {
     );
   }
 
+  publishOnce(
+    tenantId: string,
+    input: EventInput,
+    notifyUserIds: readonly string[],
+    onInsert?: () => Promise<void>,
+  ) {
+    return this.audit.transaction(tenantId, async () => {
+      const existing = await this.events.get(tenantId, input.id);
+      if (!existing) await onInsert?.();
+      return this.appendInTransaction(
+        tenantId,
+        {
+          ...input,
+          occurredAt: existing?.event.occurredAt ?? input.occurredAt,
+        },
+        notifyUserIds,
+      );
+    });
+  }
+
   /** For producers already inside the platform transaction for this tenant. */
   async appendInTransaction(
     tenantId: string,
@@ -238,10 +273,7 @@ export class PlatformEventBus {
     if (existing) {
       if (
         !isDeepStrictEqual(existing.event, event) ||
-        !isDeepStrictEqual(
-          existing.notifications.map(({ userId }) => userId),
-          userIds,
-        )
+        !isDeepStrictEqual(existing.notifyUserIds, userIds)
       )
         throw new PlatformError('idempotency_conflict');
       return existing.event;
@@ -253,12 +285,29 @@ export class PlatformEventBus {
         : hook.events.includes(input.type),
     );
     const at = this.now();
-    const row: EventRow = {
-      event,
-      deliveries: destinations.map(({ id }) => queued(event.id, id, at)),
-      notifications: userIds.map((userId) => ({ userId })),
-    };
-    await this.events.put(tenantId, event.id, row);
+    await this.events.put(tenantId, event.id, { event, notifyUserIds: userIds });
+    await this.audit.record(
+      {
+        tenantId,
+        actor: { id: 'platform-event-bus', kind: 'service' },
+        source: 'workflow',
+        traceId: event.id,
+        correlationId: event.id,
+      },
+      'platform.event.publish',
+      'ok',
+      event.id,
+    );
+    for (const { id } of destinations) {
+      const delivery = queued(event.id, id, at);
+      await this.deliveryRows.write(tenantId, delivery.id, delivery, null);
+    }
+    for (const userId of userIds) {
+      await this.notificationRows.put(tenantId, notificationId(event.id, userId), {
+        eventId: event.id,
+        userId,
+      });
+    }
     return event;
   }
 
@@ -279,46 +328,55 @@ export class PlatformEventBus {
 
   async deliveries(tenantId: string, webhookId: string) {
     await this.hook(tenantId, webhookId);
-    return (await this.events.list(tenantId)).flatMap(({ deliveries }) =>
-      deliveries.filter((item) => item.webhookId === webhookId),
-    );
+    return (await this.deliveryRows.list(tenantId)).filter((item) => item.webhookId === webhookId);
   }
 
   replay(context: MutationContext, deliveryId: string) {
     const { tenantId } = context;
     return this.audit.transaction(tenantId, async () => {
-      const rows = await this.events.list(tenantId);
-      const row = rows.find(({ deliveries }) => deliveries.some(({ id }) => id === deliveryId));
-      const prior = row?.deliveries.find(({ id }) => id === deliveryId);
-      if (!row || !prior) throw new PlatformError('not_found');
+      const prior = await this.deliveryRows.get(tenantId, deliveryId);
+      if (!prior) throw new PlatformError('not_found');
       if (prior.status !== 'dead') throw new PlatformError('forbidden');
-      const existing = row.deliveries.find(({ id }) => id === prior.replayId);
-      if (existing) return existing;
-      const delivery = { ...queued(row.event.id, prior.webhookId, this.now()), replayOf: prior.id };
+      if (prior.replayId) {
+        const existing = await this.deliveryRows.get(tenantId, prior.replayId);
+        if (existing) return existing;
+      }
+      const delivery = {
+        ...queued(prior.eventId, prior.webhookId, this.now()),
+        replayOf: prior.id,
+      };
       prior.replayId = delivery.id;
-      row.deliveries.push(delivery);
       await this.audit.record(context, 'platform.webhook.replay', 'ok', delivery.id);
-      await this.events.put(tenantId, row.event.id, row);
+      await this.deliveryRows.put(tenantId, prior.id, prior);
+      await this.deliveryRows.write(tenantId, delivery.id, delivery, null);
       return delivery;
     });
   }
 
   async notifications(tenantId: string, userId: string) {
-    return (await this.events.list(tenantId)).flatMap(({ event, notifications }) => {
-      const notification = notifications.find((entry) => entry.userId === userId);
-      return notification ? [{ id: event.id, event, readAt: notification.readAt }] : [];
-    });
+    const notifications = (await this.notificationRows.list(tenantId)).filter(
+      (entry) => entry.userId === userId,
+    );
+    const items = await Promise.all(
+      notifications.map(async ({ eventId, readAt }) => {
+        const row = await this.events.get(tenantId, eventId);
+        if (row) return { id: eventId, event: row.event, readAt };
+      }),
+    );
+    return items.filter((item) => item !== undefined);
   }
 
   markRead(context: MutationContext, eventId: string) {
     const { tenantId } = context;
     return this.audit.transaction(tenantId, async () => {
+      const id = notificationId(eventId, context.actor.id);
       const row = await this.events.get(tenantId, eventId);
-      const notification = row?.notifications.find(({ userId }) => userId === context.actor.id);
+      const notification = await this.notificationRows.get(tenantId, id);
       if (!row || !notification) throw new PlatformError('not_found');
       if (!notification.readAt) {
         notification.readAt = this.now();
-        await this.events.put(tenantId, eventId, row);
+        await this.notificationRows.put(tenantId, id, notification);
+        await this.audit.record(context, 'platform.notification.read', 'ok', eventId);
       }
       return { id: eventId, event: row.event, readAt: notification.readAt };
     });
@@ -328,43 +386,49 @@ export class PlatformEventBus {
   async deliverDue(tenantId: string) {
     if (!this.transport) return 0;
     const now = instant(this.now());
-    const rows = await this.events.list(tenantId);
-    const due = rows
-      .flatMap(({ deliveries }) => deliveries)
+    const due = (await this.deliveryRows.list(tenantId))
       .filter(({ nextAttemptAt }) => nextAttemptAt !== undefined && instant(nextAttemptAt) <= now)
       .sort((a, b) => instant(a.nextAttemptAt!) - instant(b.nextAttemptAt!))
       .slice(0, workerBatch);
-    for (const delivery of due)
-      await this.deliver(tenantId, delivery.eventId, delivery.id, this.transport);
-    return due.length;
+    let processed = 0;
+    for (const delivery of due) {
+      if (await this.deliver(tenantId, delivery.id, this.transport)) processed++;
+    }
+    return processed;
   }
 
-  private async deliver(
-    tenantId: string,
-    eventId: string,
-    id: string,
-    transport: WebhookTransport,
-  ) {
-    const claim = await this.audit.transaction(tenantId, async () => {
-      const row = await this.events.get(tenantId, eventId);
-      const delivery = row?.deliveries.find((item) => item.id === id);
+  private async deliver(tenantId: string, id: string, transport: WebhookTransport) {
+    const context: MutationContext = {
+      tenantId,
+      actor: { id: 'platform-webhook-worker', kind: 'service' },
+      source: 'workflow',
+      traceId: id,
+      correlationId: id,
+    };
+    const claim = await this.audit.claim(tenantId, async () => {
+      const delivery = await this.deliveryRows.lock(tenantId, id);
       const at = instant(this.now());
-      if (!row || !delivery?.nextAttemptAt || instant(delivery.nextAttemptAt) > at) return;
+      if (!delivery?.nextAttemptAt || instant(delivery.nextAttemptAt) > at) return;
       if (delivery.status === 'sending') {
         this.settle(delivery, at);
-        await this.events.put(tenantId, eventId, row);
-        return;
+        await this.deliveryRows.put(tenantId, id, delivery);
+        await this.audit.record(context, 'platform.webhook.lease_expired', 'unknown', id);
+        return { expired: true } as const;
       }
+      const row = await this.events.get(tenantId, delivery.eventId);
+      if (!row) throw new PlatformError('not_found');
       const hook = await this.hook(tenantId, delivery.webhookId);
       const secret = this.secret(tenantId, hook.id);
       const number = delivery.attempts.length + 1;
       delivery.attempts.push({ number, at: iso(at), outcome: 'sending' });
       delivery.status = 'sending';
       delivery.nextAttemptAt = iso(at + leaseMs);
-      await this.events.put(tenantId, eventId, row);
+      await this.deliveryRows.put(tenantId, id, delivery);
+      await this.audit.record(context, 'platform.webhook.claim', 'ok', id);
       return { event: row.event, number, at, hook, secret };
     });
-    if (!claim) return;
+    if (!claim) return false;
+    if ('expired' in claim) return true;
     const body = JSON.stringify(claim.event);
     const timestamp = String(Math.floor(claim.at / 1000));
     let status: number | undefined;
@@ -387,19 +451,20 @@ export class PlatformEventBus {
     } catch {
       // Transport error bodies and messages can contain credentials or recipient data.
     }
-    await this.audit.transaction(tenantId, async () => {
-      const row = await this.events.get(tenantId, eventId);
-      const current = row?.deliveries.find((item) => item.id === id);
-      if (
-        !row ||
-        !current ||
-        current.status !== 'sending' ||
-        current.attempts.length !== claim.number
-      )
+    await this.audit.claim(tenantId, async () => {
+      const current = await this.deliveryRows.lock(tenantId, id, false);
+      if (!current || current.status !== 'sending' || current.attempts.length !== claim.number)
         return;
-      this.settle(current, instant(this.now()), status);
-      await this.events.put(tenantId, eventId, row);
+      const outcome = this.settle(current, instant(this.now()), status);
+      await this.deliveryRows.put(tenantId, id, current);
+      await this.audit.record(
+        context,
+        'platform.webhook.settle',
+        outcome === 'delivered' ? 'ok' : 'failed',
+        id,
+      );
     });
+    return true;
   }
 
   private settle(delivery: Delivery, at: number, status?: number) {
@@ -415,5 +480,6 @@ export class PlatformEventBus {
           : 'retry';
     delivery.status = attempt.outcome;
     delivery.nextAttemptAt = attempt.outcome === 'retry' ? iso(at + delay) : undefined;
+    return attempt.outcome;
   }
 }

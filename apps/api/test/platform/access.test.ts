@@ -28,7 +28,12 @@ async function setup(t: TestContext, requireStepUp?: boolean) {
     [reader.actor, 'fixture-reader'],
     [foreign.actor, 'foreign-user'],
   ] as const)
-    services.directory.linkUser(actor.id, fake.config.issuer, subject);
+    await services.directory.linkUser(
+      actor.id === foreign.actor.id ? foreign.tenantId : tenantId,
+      actor.id,
+      fake.config.issuer,
+      subject,
+    );
 
   const auth = new PlatformAuth(services.directory, {
     oidc: fake.config,
@@ -258,7 +263,7 @@ test('only a stepped-up platform operator can provision, suspend or resume a ten
   );
   const identity = await verifyIdentity(newAdmin.accessToken);
   assert.ok(identity);
-  assert.equal(services.directory.requestExport(identity).tenantId, tenant.id);
+  assert.equal((await services.directory.requestExport(identity)).tenantId, tenant.id);
   assert.equal(
     (await request('POST', '/tenants/' + tenant.id + '/suspend', newAdmin.accessToken)).statusCode,
     403,
